@@ -2,11 +2,19 @@
 
 namespace Wallabag\ImportBundle\Controller;
 
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
 
 class FirefoxController extends BrowserController
 {
+    /**
+     * @Route("/firefox", name="import_firefox")
+     */
+    public function indexAction(Request $request)
+    {
+        return parent::indexAction($request);
+    }
+
     /**
      * {@inheritdoc}
      */
@@ -29,13 +37,5 @@ class FirefoxController extends BrowserController
     protected function getImportTemplate()
     {
         return 'WallabagImportBundle:Firefox:index.html.twig';
-    }
-
-    /**
-     * @Route("/firefox", name="import_firefox")
-     */
-    public function indexAction(Request $request)
-    {
-        return parent::indexAction($request);
     }
 }

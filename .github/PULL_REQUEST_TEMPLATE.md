@@ -7,8 +7,15 @@
 | Tests pass?   | yes/no
 | Documentation | yes/no
 | Translation   | yes/no
-| Fixed tickets | #...
+| CHANGELOG.md  | yes/no
 | License       | MIT
+
+<!--
+Please list the issues your PR fixes using special keywords, see
+https://help.github.com/articles/closing-issues-using-keywords/
+
+Fixes #…
+-->
 
 <!--
 - Please fill in this template according to the PR you're about to submit.

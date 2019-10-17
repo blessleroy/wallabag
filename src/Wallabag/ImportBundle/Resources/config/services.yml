@@ -7,19 +7,14 @@ services:
         class: Wallabag\ImportBundle\Import\ImportChain
 
     wallabag_import.pocket.client:
-        class: GuzzleHttp\Client
-        arguments:
-            -
-                defaults:
-                    headers:
-                        content-type: "application/json"
-                        X-Accept: "application/json"
+        alias: 'httplug.client.wallabag_import.pocket.client'
 
     wallabag_import.pocket.import:
         class: Wallabag\ImportBundle\Import\PocketImport
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
         calls:
             - [ setClient, [ "@wallabag_import.pocket.client" ] ]
@@ -32,7 +27,10 @@ services:
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
+            - "%wallabag_core.fetching_error_message_title%"
+            - "%wallabag_core.fetching_error_message%"
         calls:
             - [ setLogger, [ "@logger" ]]
         tags:
@@ -43,6 +41,7 @@ services:
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
         calls:
             - [ setLogger, [ "@logger" ]]
@@ -54,6 +53,7 @@ services:
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
         calls:
             - [ setLogger, [ "@logger" ]]
@@ -65,6 +65,7 @@ services:
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
         calls:
             - [ setLogger, [ "@logger" ]]
@@ -76,6 +77,7 @@ services:
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
         calls:
             - [ setLogger, [ "@logger" ]]
@@ -87,6 +89,7 @@ services:
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
         calls:
             - [ setLogger, [ "@logger" ]]
@@ -97,8 +100,17 @@ services:
         arguments:
             - "@doctrine.orm.entity_manager"
             - "@wallabag_core.content_proxy"
+            - "@wallabag_core.tags_assigner"
             - "@event_dispatcher"
         calls:
             - [ setLogger, [ "@logger" ]]
         tags:
             -  { name: wallabag_import.import, alias: chrome }
+
+    wallabag_import.command.import:
+        class: Wallabag\ImportBundle\Command\ImportCommand
+        tags: ['console.command']
+
+    wallabag_import.command.redis_worker:
+        class: Wallabag\ImportBundle\Command\RedisWorkerCommand
+        tags: ['console.command']

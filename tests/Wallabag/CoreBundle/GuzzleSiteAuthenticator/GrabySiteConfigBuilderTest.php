@@ -2,62 +2,87 @@
 
 namespace Tests\Wallabag\CoreBundle\GuzzleSiteAuthenticator;
 
-use BD\GuzzleSiteAuthenticator\SiteConfig\SiteConfig;
 use Graby\SiteConfig\SiteConfig as GrabySiteConfig;
-use PHPUnit_Framework_TestCase;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
+use Tests\Wallabag\CoreBundle\WallabagCoreTestCase;
 use Wallabag\CoreBundle\GuzzleSiteAuthenticator\GrabySiteConfigBuilder;
 
-class GrabySiteConfigBuilderTest extends PHPUnit_Framework_TestCase
+class GrabySiteConfigBuilderTest extends WallabagCoreTestCase
 {
-    /** @var \Wallabag\CoreBundle\GuzzleSiteAuthenticator\GrabySiteConfigBuilder */
-    protected $builder;
+    private $builder;
 
     public function testBuildConfigExists()
     {
-        /* @var \Graby\SiteConfig\ConfigBuilder|\PHPUnit_Framework_MockObject_MockObject */
-        $grabyConfigBuilderMock = $this->getMockBuilder('\Graby\SiteConfig\ConfigBuilder')
+        $grabyConfigBuilderMock = $this->getMockBuilder('Graby\SiteConfig\ConfigBuilder')
             ->disableOriginalConstructor()
             ->getMock();
 
         $grabySiteConfig = new GrabySiteConfig();
         $grabySiteConfig->requires_login = true;
-        $grabySiteConfig->login_uri = 'http://example.com/login';
+        $grabySiteConfig->login_uri = 'http://api.example.com/login';
         $grabySiteConfig->login_username_field = 'login';
         $grabySiteConfig->login_password_field = 'password';
-        $grabySiteConfig->login_extra_fields = ['field' => 'value'];
+        $grabySiteConfig->login_extra_fields = ['field=value'];
         $grabySiteConfig->not_logged_in_xpath = '//div[@class="need-login"]';
 
         $grabyConfigBuilderMock
             ->method('buildForHost')
-            ->with('example.com')
-            ->will($this->returnValue($grabySiteConfig));
+            ->with('api.example.com')
+            ->willReturn($grabySiteConfig);
 
-        $this->builder = new GrabySiteConfigBuilder(
+        $logger = new Logger('foo');
+        $handler = new TestHandler();
+        $logger->pushHandler($handler);
+
+        $siteCrentialRepo = $this->getMockBuilder('Wallabag\CoreBundle\Repository\SiteCredentialRepository')
+            ->disableOriginalConstructor()
+            ->getMock();
+        $siteCrentialRepo->expects($this->once())
+            ->method('findOneByHostsAndUser')
+            ->with(['api.example.com', '.example.com'], 1)
+            ->willReturn(['username' => 'foo', 'password' => 'bar']);
+
+        $user = $this->getMockBuilder('Wallabag\UserBundle\Entity\User')
+            ->disableOriginalConstructor()
+            ->getMock();
+        $user->expects($this->once())
+            ->method('getId')
+            ->willReturn(1);
+
+        $token = new UsernamePasswordToken($user, 'pass', 'provider');
+
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken($token);
+
+        $builder = new GrabySiteConfigBuilder(
             $grabyConfigBuilderMock,
-            ['example.com' => ['username' => 'foo', 'password' => 'bar']]
+            $tokenStorage,
+            $siteCrentialRepo,
+            $logger
         );
 
-        $config = $this->builder->buildForHost('example.com');
+        $config = $builder->buildForHost('api.example.com');
 
-        self::assertEquals(
-            new SiteConfig([
-                'host' => 'example.com',
-                'requiresLogin' => true,
-                'loginUri' => 'http://example.com/login',
-                'usernameField' => 'login',
-                'passwordField' => 'password',
-                'extraFields' => ['field' => 'value'],
-                'notLoggedInXpath' => '//div[@class="need-login"]',
-                'username' => 'foo',
-                'password' => 'bar',
-            ]),
-            $config
-        );
+        $this->assertSame('api.example.com', $config->getHost());
+        $this->assertTrue($config->requiresLogin());
+        $this->assertSame('http://api.example.com/login', $config->getLoginUri());
+        $this->assertSame('login', $config->getUsernameField());
+        $this->assertSame('password', $config->getPasswordField());
+        $this->assertSame(['field' => 'value'], $config->getExtraFields());
+        $this->assertSame('//div[@class="need-login"]', $config->getNotLoggedInXpath());
+        $this->assertSame('foo', $config->getUsername());
+        $this->assertSame('bar', $config->getPassword());
+
+        $records = $handler->getRecords();
+
+        $this->assertCount(1, $records, 'One log was recorded');
     }
 
     public function testBuildConfigDoesntExist()
     {
-        /* @var \Graby\SiteConfig\ConfigBuilder|\PHPUnit_Framework_MockObject_MockObject */
         $grabyConfigBuilderMock = $this->getMockBuilder('\Graby\SiteConfig\ConfigBuilder')
             ->disableOriginalConstructor()
             ->getMock();
@@ -65,21 +90,229 @@ class GrabySiteConfigBuilderTest extends PHPUnit_Framework_TestCase
         $grabyConfigBuilderMock
             ->method('buildForHost')
             ->with('unknown.com')
-            ->will($this->returnValue(new GrabySiteConfig()));
+            ->willReturn(new GrabySiteConfig());
 
-        $this->builder = new GrabySiteConfigBuilder($grabyConfigBuilderMock, []);
+        $logger = new Logger('foo');
+        $handler = new TestHandler();
+        $logger->pushHandler($handler);
 
-        $config = $this->builder->buildForHost('unknown.com');
+        $siteCrentialRepo = $this->getMockBuilder('Wallabag\CoreBundle\Repository\SiteCredentialRepository')
+            ->disableOriginalConstructor()
+            ->getMock();
+        $siteCrentialRepo->expects($this->once())
+            ->method('findOneByHostsAndUser')
+            ->with(['unknown.com', '.com'], 1)
+            ->willReturn(null);
 
-        self::assertEquals(
-            new SiteConfig([
-                'host' => 'unknown.com',
-                'requiresLogin' => false,
-                'username' => null,
-                'password' => null,
-                'extraFields' => [],
-            ]),
-            $config
+        $user = $this->getMockBuilder('Wallabag\UserBundle\Entity\User')
+            ->disableOriginalConstructor()
+            ->getMock();
+        $user->expects($this->once())
+            ->method('getId')
+            ->willReturn(1);
+
+        $token = new UsernamePasswordToken($user, 'pass', 'provider');
+
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken($token);
+
+        $builder = new GrabySiteConfigBuilder(
+            $grabyConfigBuilderMock,
+            $tokenStorage,
+            $siteCrentialRepo,
+            $logger
         );
+
+        $config = $builder->buildForHost('unknown.com');
+
+        $this->assertFalse($config);
+
+        $records = $handler->getRecords();
+
+        $this->assertCount(1, $records, 'One log was recorded');
+    }
+
+    public function testBuildConfigWithBadExtraFields()
+    {
+        $grabyConfigBuilderMock = $this->getMockBuilder('Graby\SiteConfig\ConfigBuilder')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $grabySiteConfig = new GrabySiteConfig();
+        $grabySiteConfig->requires_login = true;
+        $grabySiteConfig->login_uri = 'http://www.example.com/login';
+        $grabySiteConfig->login_username_field = 'login';
+        $grabySiteConfig->login_password_field = 'password';
+        $grabySiteConfig->login_extra_fields = ['field'];
+        $grabySiteConfig->not_logged_in_xpath = '//div[@class="need-login"]';
+
+        $grabyConfigBuilderMock
+            ->method('buildForHost')
+            ->with('example.com')
+            ->willReturn($grabySiteConfig);
+
+        $logger = new Logger('foo');
+        $handler = new TestHandler();
+        $logger->pushHandler($handler);
+
+        $siteCrentialRepo = $this->getMockBuilder('Wallabag\CoreBundle\Repository\SiteCredentialRepository')
+            ->disableOriginalConstructor()
+            ->getMock();
+        $siteCrentialRepo->expects($this->once())
+            ->method('findOneByHostsAndUser')
+            ->with(['example.com', '.com'], 1)
+            ->willReturn(['username' => 'foo', 'password' => 'bar']);
+
+        $user = $this->getMockBuilder('Wallabag\UserBundle\Entity\User')
+            ->disableOriginalConstructor()
+            ->getMock();
+        $user->expects($this->once())
+            ->method('getId')
+            ->willReturn(1);
+
+        $token = new UsernamePasswordToken($user, 'pass', 'provider');
+
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken($token);
+
+        $this->builder = new GrabySiteConfigBuilder(
+            $grabyConfigBuilderMock,
+            $tokenStorage,
+            $siteCrentialRepo,
+            $logger
+        );
+
+        $config = $this->builder->buildForHost('www.example.com');
+
+        $this->assertSame('example.com', $config->getHost());
+        $this->assertTrue($config->requiresLogin());
+        $this->assertSame('http://www.example.com/login', $config->getLoginUri());
+        $this->assertSame('login', $config->getUsernameField());
+        $this->assertSame('password', $config->getPasswordField());
+        $this->assertSame([], $config->getExtraFields());
+        $this->assertSame('//div[@class="need-login"]', $config->getNotLoggedInXpath());
+        $this->assertSame('foo', $config->getUsername());
+        $this->assertSame('bar', $config->getPassword());
+
+        $records = $handler->getRecords();
+
+        $this->assertCount(1, $records, 'One log was recorded');
+    }
+
+    public function testBuildConfigUserNotDefined()
+    {
+        $grabyConfigBuilderMock = $this->getMockBuilder('\Graby\SiteConfig\ConfigBuilder')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $grabyConfigBuilderMock
+            ->method('buildForHost')
+            ->with('unknown.com')
+            ->willReturn(new GrabySiteConfig());
+
+        $logger = new Logger('foo');
+        $handler = new TestHandler();
+        $logger->pushHandler($handler);
+
+        $siteCrentialRepo = $this->getMockBuilder('Wallabag\CoreBundle\Repository\SiteCredentialRepository')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $tokenStorage = new TokenStorage();
+
+        $builder = new GrabySiteConfigBuilder(
+            $grabyConfigBuilderMock,
+            $tokenStorage,
+            $siteCrentialRepo,
+            $logger
+        );
+
+        $config = $builder->buildForHost('unknown.com');
+
+        $this->assertFalse($config);
+    }
+
+    public function dataProviderCredentials()
+    {
+        return [
+            [
+                'host' => 'example.com',
+            ],
+            [
+                'host' => 'other.example.com',
+            ],
+            [
+                'host' => 'paywall.example.com',
+                'expectedUsername' => 'paywall.example',
+                'expectedPassword' => 'bar',
+            ],
+            [
+                'host' => 'api.super.com',
+                'expectedUsername' => '.super',
+                'expectedPassword' => 'bar',
+            ],
+            [
+                'host' => '.super.com',
+                'expectedUsername' => '.super',
+                'expectedPassword' => 'bar',
+            ],
+        ];
+    }
+
+    /**
+     * @dataProvider dataProviderCredentials
+     */
+    public function testBuildConfigWithDbAccess($host, $expectedUsername = null, $expectedPassword = null)
+    {
+        $grabyConfigBuilderMock = $this->getMockBuilder('Graby\SiteConfig\ConfigBuilder')
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $grabySiteConfig = new GrabySiteConfig();
+        $grabySiteConfig->requires_login = true;
+        $grabySiteConfig->login_uri = 'http://api.example.com/login';
+        $grabySiteConfig->login_username_field = 'login';
+        $grabySiteConfig->login_password_field = 'password';
+        $grabySiteConfig->login_extra_fields = ['field=value'];
+        $grabySiteConfig->not_logged_in_xpath = '//div[@class="need-login"]';
+
+        $grabyConfigBuilderMock
+            ->method('buildForHost')
+            ->with($host)
+            ->willReturn($grabySiteConfig);
+
+        $user = $this->getMockBuilder('Wallabag\UserBundle\Entity\User')
+            ->disableOriginalConstructor()
+            ->getMock();
+        $user->expects($this->once())
+            ->method('getId')
+            ->willReturn(1);
+
+        $token = new UsernamePasswordToken($user, 'pass', 'provider');
+
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken($token);
+
+        $logger = new Logger('foo');
+        $handler = new TestHandler();
+        $logger->pushHandler($handler);
+
+        $builder = new GrabySiteConfigBuilder(
+            $grabyConfigBuilderMock,
+            $tokenStorage,
+            $this->getClient()->getContainer()->get('wallabag_core.site_credential_repository'),
+            $logger
+        );
+
+        $config = $builder->buildForHost($host);
+
+        if (null === $expectedUsername && null === $expectedPassword) {
+            $this->assertFalse($config);
+
+            return;
+        }
+
+        $this->assertSame($expectedUsername, $config->getUsername());
+        $this->assertSame($expectedPassword, $config->getPassword());
     }
 }

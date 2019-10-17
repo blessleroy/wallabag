@@ -4,16 +4,22 @@ namespace Wallabag\CoreBundle\Entity;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Mapping as ORM;
+use Gedmo\Mapping\Annotation as Gedmo;
 use JMS\Serializer\Annotation\ExclusionPolicy;
 use JMS\Serializer\Annotation\Expose;
-use Gedmo\Mapping\Annotation as Gedmo;
 use JMS\Serializer\Annotation\XmlRoot;
 
 /**
  * Tag.
  *
  * @XmlRoot("tag")
- * @ORM\Table(name="`tag`")
+ * @ORM\Table(
+ *     name="`tag`",
+ *     options={"collate"="utf8mb4_bin", "charset"="utf8mb4"},
+ *     indexes={
+ *         @ORM\Index(name="tag_label", columns={"label"}, options={"lengths"={255}}),
+ *     }
+ * )
  * @ORM\Entity(repositoryClass="Wallabag\CoreBundle\Repository\TagRepository")
  * @ExclusionPolicy("all")
  */
@@ -78,7 +84,7 @@ class Tag
      */
     public function setLabel($label)
     {
-        $this->label = $label;
+        $this->label = mb_convert_case($label, MB_CASE_LOWER);
 
         return $this;
     }

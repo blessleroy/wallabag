@@ -11,9 +11,14 @@
 <main class="valign-wrapper">
     <div class="valign row">
         <div class="card sw">
-            <div class="center"><img src="{{ asset('bundles/wallabagcore/themes/_global/img/logo-other_themes.png') }}" alt="wallabag logo" /></div>
+            <div class="center"><img src="{{ asset('wallassets/themes/_global/img/logo-wallabag.svg') }}" class="typo-logo" alt="wallabag logo" /></div>
             {% block fos_user_content %}
             {% endblock fos_user_content %}
+        </div>
+        <div class="center">
+            <a href="{{ path('changeLocale', {'language': 'de'}) }}">Deutsch</a> –
+            <a href="{{ path('changeLocale', {'language': 'en'}) }}">English</a> –
+            <a href="{{ path('changeLocale', {'language': 'fr'}) }}">Français</a>
         </div>
     </div>
 </main>

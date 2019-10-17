@@ -8,12 +8,31 @@ class WallabagRestControllerTest extends WallabagApiTestCase
 {
     public function testGetVersion()
     {
-        $this->client->request('GET', '/api/version');
+        // create a new client instead of using $this->client to be sure client isn't authenticated
+        $client = static::createClient();
+        $client->request('GET', '/api/version');
 
-        $this->assertEquals(200, $this->client->getResponse()->getStatusCode());
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
 
-        $content = json_decode($this->client->getResponse()->getContent(), true);
+        $content = json_decode($client->getResponse()->getContent(), true);
 
-        $this->assertEquals($this->client->getContainer()->getParameter('wallabag_core.version'), $content);
+        $this->assertSame($client->getContainer()->getParameter('wallabag_core.version'), $content);
+    }
+
+    public function testGetInfo()
+    {
+        // create a new client instead of using $this->client to be sure client isn't authenticated
+        $client = static::createClient();
+        $client->request('GET', '/api/info');
+
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+
+        $content = json_decode($client->getResponse()->getContent(), true);
+
+        $this->assertArrayHasKey('appname', $content);
+        $this->assertArrayHasKey('version', $content);
+        $this->assertArrayHasKey('allowed_registration', $content);
+
+        $this->assertSame('wallabag', $content['appname']);
     }
 }

@@ -3,28 +3,16 @@
 namespace Wallabag\CoreBundle\Repository;
 
 use Doctrine\ORM\EntityRepository;
-use Doctrine\ORM\Query;
+use Doctrine\ORM\NoResultException;
+use Doctrine\ORM\QueryBuilder;
 use Pagerfanta\Adapter\DoctrineORMAdapter;
 use Pagerfanta\Pagerfanta;
+use Wallabag\CoreBundle\Entity\Entry;
 use Wallabag\CoreBundle\Entity\Tag;
+use Wallabag\CoreBundle\Helper\UrlHasher;
 
 class EntryRepository extends EntityRepository
 {
-    /**
-     * Return a query builder to used by other getBuilderFor* method.
-     *
-     * @param int $userId
-     *
-     * @return QueryBuilder
-     */
-    private function getBuilderByUser($userId)
-    {
-        return $this->createQueryBuilder('e')
-            ->andWhere('e.user = :userId')->setParameter('userId', $userId)
-            ->orderBy('e.createdAt', 'desc')
-        ;
-    }
-
     /**
      * Retrieves all entries for a user.
      *
@@ -35,7 +23,7 @@ class EntryRepository extends EntityRepository
     public function getBuilderForAllByUser($userId)
     {
         return $this
-            ->getBuilderByUser($userId)
+            ->getSortedQueryBuilderByUser($userId)
         ;
     }
 
@@ -49,7 +37,7 @@ class EntryRepository extends EntityRepository
     public function getBuilderForUnreadByUser($userId)
     {
         return $this
-            ->getBuilderByUser($userId)
+            ->getSortedQueryBuilderByUser($userId)
             ->andWhere('e.isArchived = false')
         ;
     }
@@ -64,7 +52,7 @@ class EntryRepository extends EntityRepository
     public function getBuilderForArchiveByUser($userId)
     {
         return $this
-            ->getBuilderByUser($userId)
+            ->getSortedQueryBuilderByUser($userId, 'archivedAt', 'desc')
             ->andWhere('e.isArchived = true')
         ;
     }
@@ -79,7 +67,7 @@ class EntryRepository extends EntityRepository
     public function getBuilderForStarredByUser($userId)
     {
         return $this
-            ->getBuilderByUser($userId)
+            ->getSortedQueryBuilderByUser($userId, 'starredAt', 'desc')
             ->andWhere('e.isStarred = true')
         ;
     }
@@ -89,14 +77,14 @@ class EntryRepository extends EntityRepository
      *
      * @param int    $userId
      * @param string $term
-     * @param strint $currentRoute
+     * @param string $currentRoute
      *
      * @return QueryBuilder
      */
     public function getBuilderForSearchByUser($userId, $term, $currentRoute)
     {
         $qb = $this
-            ->getBuilderByUser($userId);
+            ->getSortedQueryBuilderByUser($userId);
 
         if ('starred' === $currentRoute) {
             $qb->andWhere('e.isStarred = true');
@@ -108,7 +96,7 @@ class EntryRepository extends EntityRepository
 
         // We lower() all parts here because PostgreSQL 'LIKE' verb is case-sensitive
         $qb
-            ->andWhere('lower(e.content) LIKE lower(:term) OR lower(e.title) LIKE lower(:term) OR lower(e.url) LIKE lower(:term)')->setParameter('term', '%'.$term.'%')
+            ->andWhere('lower(e.content) LIKE lower(:term) OR lower(e.title) LIKE lower(:term) OR lower(e.url) LIKE lower(:term)')->setParameter('term', '%' . $term . '%')
             ->leftJoin('e.tags', 't')
             ->groupBy('e.id');
 
@@ -116,7 +104,7 @@ class EntryRepository extends EntityRepository
     }
 
     /**
-     * Retrieves untagged entries for a user.
+     * Retrieve a sorted list of untagged entries for a user.
      *
      * @param int $userId
      *
@@ -124,9 +112,36 @@ class EntryRepository extends EntityRepository
      */
     public function getBuilderForUntaggedByUser($userId)
     {
-        return $this
-            ->getBuilderByUser($userId)
-            ->andWhere('size(e.tags) = 0');
+        return $this->sortQueryBuilder($this->getRawBuilderForUntaggedByUser($userId));
+    }
+
+    /**
+     * Retrieve untagged entries for a user.
+     *
+     * @param int $userId
+     *
+     * @return QueryBuilder
+     */
+    public function getRawBuilderForUntaggedByUser($userId)
+    {
+        return $this->getQueryBuilderByUser($userId)
+            ->leftJoin('e.tags', 't')
+            ->andWhere('t.id is null');
+    }
+
+    /**
+     * Retrieve the number of untagged entries for a user.
+     *
+     * @param int $userId
+     *
+     * @return int
+     */
+    public function countUntaggedEntriesByUser($userId)
+    {
+        return (int) $this->getRawBuilderForUntaggedByUser($userId)
+            ->select('count(e.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
     }
 
     /**
@@ -135,41 +150,82 @@ class EntryRepository extends EntityRepository
      * @param int    $userId
      * @param bool   $isArchived
      * @param bool   $isStarred
+     * @param bool   $isPublic
      * @param string $sort
      * @param string $order
      * @param int    $since
      * @param string $tags
+     * @param string $detail     'metadata' or 'full'. Include content field if 'full'
      *
-     * @return array
+     * @todo Breaking change: replace default detail=full by detail=metadata in a future version
+     *
+     * @return Pagerfanta
      */
-    public function findEntries($userId, $isArchived = null, $isStarred = null, $sort = 'created', $order = 'ASC', $since = 0, $tags = '')
+    public function findEntries($userId, $isArchived = null, $isStarred = null, $isPublic = null, $sort = 'created', $order = 'asc', $since = 0, $tags = '', $detail = 'full')
     {
+        if (!\in_array(strtolower($detail), ['full', 'metadata'], true)) {
+            throw new \Exception('Detail "' . $detail . '" parameter is wrong, allowed: full or metadata');
+        }
+
         $qb = $this->createQueryBuilder('e')
             ->leftJoin('e.tags', 't')
-            ->where('e.user =:userId')->setParameter('userId', $userId);
+            ->where('e.user = :userId')->setParameter('userId', $userId);
+
+        if ('metadata' === $detail) {
+            $fieldNames = $this->getClassMetadata()->getFieldNames();
+            $fields = array_filter($fieldNames, function ($k) {
+                return 'content' !== $k;
+            });
+            $qb->select(sprintf('partial e.{%s}', implode(',', $fields)));
+        }
 
         if (null !== $isArchived) {
-            $qb->andWhere('e.isArchived =:isArchived')->setParameter('isArchived', (bool) $isArchived);
+            $qb->andWhere('e.isArchived = :isArchived')->setParameter('isArchived', (bool) $isArchived);
         }
 
         if (null !== $isStarred) {
-            $qb->andWhere('e.isStarred =:isStarred')->setParameter('isStarred', (bool) $isStarred);
+            $qb->andWhere('e.isStarred = :isStarred')->setParameter('isStarred', (bool) $isStarred);
+        }
+
+        if (null !== $isPublic) {
+            $qb->andWhere('e.uid IS ' . (true === $isPublic ? 'NOT' : '') . ' NULL');
         }
 
         if ($since > 0) {
             $qb->andWhere('e.updatedAt > :since')->setParameter('since', new \DateTime(date('Y-m-d H:i:s', $since)));
         }
 
-        if ('' !== $tags) {
-            foreach (explode(',', $tags) as $tag) {
-                $qb->andWhere('t.label = :label')->setParameter('label', $tag);
+        if (\is_string($tags) && '' !== $tags) {
+            foreach (explode(',', $tags) as $i => $tag) {
+                $entryAlias = 'e' . $i;
+                $tagAlias = 't' . $i;
+
+                // Complexe queries to ensure multiple tags are associated to an entry
+                // https://stackoverflow.com/a/6638146/569101
+                $qb->andWhere($qb->expr()->in(
+                    'e.id',
+                    $this->createQueryBuilder($entryAlias)
+                        ->select($entryAlias . '.id')
+                        ->leftJoin($entryAlias . '.tags', $tagAlias)
+                        ->where($tagAlias . '.label = :label' . $i)
+                        ->getDQL()
+                ));
+
+                // bound parameter to the main query builder
+                $qb->setParameter('label' . $i, $tag);
             }
+        }
+
+        if (!\in_array(strtolower($order), ['asc', 'desc'], true)) {
+            throw new \Exception('Order "' . $order . '" parameter is wrong, allowed: asc or desc');
         }
 
         if ('created' === $sort) {
             $qb->orderBy('e.id', $order);
         } elseif ('updated' === $sort) {
             $qb->orderBy('e.updatedAt', $order);
+        } elseif ('archived' === $sort) {
+            $qb->orderBy('e.archivedAt', $order);
         }
 
         $pagerAdapter = new DoctrineORMAdapter($qb, true, false);
@@ -182,7 +238,7 @@ class EntryRepository extends EntityRepository
      *
      * @param int $userId
      *
-     * @return Entry
+     * @return array
      */
     public function findOneWithTags($userId)
     {
@@ -190,7 +246,7 @@ class EntryRepository extends EntityRepository
             ->innerJoin('e.tags', 't')
             ->innerJoin('e.user', 'u')
             ->addSelect('t', 'u')
-            ->where('e.user=:userId')->setParameter('userId', $userId)
+            ->where('e.user = :userId')->setParameter('userId', $userId)
         ;
 
         return $qb->getQuery()->getResult();
@@ -254,7 +310,7 @@ class EntryRepository extends EntityRepository
      */
     public function removeTag($userId, Tag $tag)
     {
-        $entries = $this->getBuilderByUser($userId)
+        $entries = $this->getSortedQueryBuilderByUser($userId)
             ->innerJoin('e.tags', 't')
             ->andWhere('t.id = :tagId')->setParameter('tagId', $tag->getId())
             ->getQuery()
@@ -290,7 +346,7 @@ class EntryRepository extends EntityRepository
      */
     public function findAllByTagId($userId, $tagId)
     {
-        return $this->getBuilderByUser($userId)
+        return $this->getSortedQueryBuilderByUser($userId)
             ->innerJoin('e.tags', 't')
             ->andWhere('t.id = :tagId')->setParameter('tagId', $tagId)
             ->getQuery()
@@ -301,20 +357,49 @@ class EntryRepository extends EntityRepository
      * Find an entry by its url and its owner.
      * If it exists, return the entry otherwise return false.
      *
-     * @param $url
-     * @param $userId
+     * @param string $url
+     * @param int    $userId
      *
-     * @return Entry|bool
+     * @return Entry|false
      */
     public function findByUrlAndUserId($url, $userId)
     {
+        return $this->findByHashedUrlAndUserId(
+            UrlHasher::hashUrl($url),
+            $userId
+        );
+    }
+
+    /**
+     * Find an entry by its hashed url and its owner.
+     * If it exists, return the entry otherwise return false.
+     *
+     * @param string $hashedUrl Url hashed using sha1
+     * @param int    $userId
+     *
+     * @return Entry|false
+     */
+    public function findByHashedUrlAndUserId($hashedUrl, $userId)
+    {
+        // try first using hashed_url (to use the database index)
         $res = $this->createQueryBuilder('e')
-            ->where('e.url = :url')->setParameter('url', urldecode($url))
+            ->where('e.hashedUrl = :hashed_url')->setParameter('hashed_url', $hashedUrl)
             ->andWhere('e.user = :user_id')->setParameter('user_id', $userId)
             ->getQuery()
             ->getResult();
 
-        if (count($res)) {
+        if (\count($res)) {
+            return current($res);
+        }
+
+        // then try using hashed_given_url (to use the database index)
+        $res = $this->createQueryBuilder('e')
+            ->where('e.hashedGivenUrl = :hashed_given_url')->setParameter('hashed_given_url', $hashedUrl)
+            ->andWhere('e.user = :user_id')->setParameter('user_id', $userId)
+            ->getQuery()
+            ->getResult();
+
+        if (\count($res)) {
             return current($res);
         }
 
@@ -328,34 +413,14 @@ class EntryRepository extends EntityRepository
      *
      * @return int
      */
-    public function countAllEntriesByUsername($userId)
+    public function countAllEntriesByUser($userId)
     {
         $qb = $this->createQueryBuilder('e')
             ->select('count(e)')
-            ->where('e.user=:userId')->setParameter('userId', $userId)
+            ->where('e.user = :userId')->setParameter('userId', $userId)
         ;
 
-        return $qb->getQuery()->getSingleScalarResult();
-    }
-
-    /**
-     * Count all entries for a tag and a user.
-     *
-     * @param int $userId
-     * @param int $tagId
-     *
-     * @return int
-     */
-    public function countAllEntriesByUserIdAndTagId($userId, $tagId)
-    {
-        $qb = $this->createQueryBuilder('e')
-            ->select('count(e.id)')
-            ->leftJoin('e.tags', 't')
-            ->where('e.user=:userId')->setParameter('userId', $userId)
-            ->andWhere('t.id=:tagId')->setParameter('tagId', $tagId)
-        ;
-
-        return $qb->getQuery()->getSingleScalarResult();
+        return (int) $qb->getQuery()->getSingleScalarResult();
     }
 
     /**
@@ -370,5 +435,144 @@ class EntryRepository extends EntityRepository
             ->createQuery('DELETE FROM Wallabag\CoreBundle\Entity\Entry e WHERE e.user = :userId')
             ->setParameter('userId', $userId)
             ->execute();
+    }
+
+    public function removeArchivedByUserId($userId)
+    {
+        $this->getEntityManager()
+            ->createQuery('DELETE FROM Wallabag\CoreBundle\Entity\Entry e WHERE e.user = :userId AND e.isArchived = TRUE')
+            ->setParameter('userId', $userId)
+            ->execute();
+    }
+
+    /**
+     * Get id and url from all entries
+     * Used for the clean-duplicates command.
+     */
+    public function findAllEntriesIdAndUrlByUserId($userId)
+    {
+        $qb = $this->createQueryBuilder('e')
+            ->select('e.id, e.url')
+            ->where('e.user = :userid')->setParameter(':userid', $userId);
+
+        return $qb->getQuery()->getArrayResult();
+    }
+
+    /**
+     * @param int $userId
+     *
+     * @return array
+     */
+    public function findAllEntriesIdByUserId($userId = null)
+    {
+        $qb = $this->createQueryBuilder('e')
+            ->select('e.id');
+
+        if (null !== $userId) {
+            $qb->where('e.user = :userid')->setParameter(':userid', $userId);
+        }
+
+        return $qb->getQuery()->getArrayResult();
+    }
+
+    /**
+     * Find all entries by url and owner.
+     *
+     * @param string $url
+     * @param int    $userId
+     *
+     * @return array
+     */
+    public function findAllByUrlAndUserId($url, $userId)
+    {
+        return $this->createQueryBuilder('e')
+            ->where('e.url = :url')->setParameter('url', urldecode($url))
+            ->andWhere('e.user = :user_id')->setParameter('user_id', $userId)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Returns a random entry, filtering by status.
+     *
+     * @param int    $userId
+     * @param string $type   Can be unread, archive, starred, etc
+     *
+     * @throws NoResultException
+     *
+     * @return Entry
+     */
+    public function getRandomEntry($userId, $type = '')
+    {
+        $qb = $this->getQueryBuilderByUser($userId)
+            ->select('e.id');
+
+        switch ($type) {
+            case 'unread':
+                $qb->andWhere('e.isArchived = false');
+                break;
+            case 'archive':
+                $qb->andWhere('e.isArchived = true');
+                break;
+            case 'starred':
+                $qb->andWhere('e.isStarred = true');
+                break;
+            case 'untagged':
+                $qb->leftJoin('e.tags', 't');
+                $qb->andWhere('t.id is null');
+                break;
+        }
+
+        $ids = $qb->getQuery()->getArrayResult();
+
+        if (empty($ids)) {
+            throw new NoResultException();
+        }
+
+        // random select one in the list
+        $randomId = $ids[mt_rand(0, \count($ids) - 1)]['id'];
+
+        return $this->find($randomId);
+    }
+
+    /**
+     * Return a query builder to be used by other getBuilderFor* method.
+     *
+     * @param int $userId
+     *
+     * @return QueryBuilder
+     */
+    private function getQueryBuilderByUser($userId)
+    {
+        return $this->createQueryBuilder('e')
+            ->andWhere('e.user = :userId')->setParameter('userId', $userId);
+    }
+
+    /**
+     * Return a sorted query builder to be used by other getBuilderFor* method.
+     *
+     * @param int    $userId
+     * @param string $sortBy
+     * @param string $direction
+     *
+     * @return QueryBuilder
+     */
+    private function getSortedQueryBuilderByUser($userId, $sortBy = 'createdAt', $direction = 'desc')
+    {
+        return $this->sortQueryBuilder($this->getQueryBuilderByUser($userId), $sortBy, $direction);
+    }
+
+    /**
+     * Return the given QueryBuilder with an orderBy() call.
+     *
+     * @param QueryBuilder $qb
+     * @param string       $sortBy
+     * @param string       $direction
+     *
+     * @return QueryBuilder
+     */
+    private function sortQueryBuilder(QueryBuilder $qb, $sortBy = 'createdAt', $direction = 'desc')
+    {
+        return $qb->orderBy(sprintf('e.%s', $sortBy), $direction);
     }
 }

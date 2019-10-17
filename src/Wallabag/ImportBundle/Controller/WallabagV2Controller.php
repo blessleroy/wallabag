@@ -2,11 +2,19 @@
 
 namespace Wallabag\ImportBundle\Controller;
 
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
 
 class WallabagV2Controller extends WallabagController
 {
+    /**
+     * @Route("/wallabag-v2", name="import_wallabag_v2")
+     */
+    public function indexAction(Request $request)
+    {
+        return parent::indexAction($request);
+    }
+
     /**
      * {@inheritdoc}
      */
@@ -29,13 +37,5 @@ class WallabagV2Controller extends WallabagController
     protected function getImportTemplate()
     {
         return 'WallabagImportBundle:WallabagV2:index.html.twig';
-    }
-
-    /**
-     * @Route("/wallabag-v2", name="import_wallabag_v2")
-     */
-    public function indexAction(Request $request)
-    {
-        return parent::indexAction($request);
     }
 }

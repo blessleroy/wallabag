@@ -2,11 +2,19 @@
 
 namespace Wallabag\ImportBundle\Controller;
 
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
 
 class ChromeController extends BrowserController
 {
+    /**
+     * @Route("/chrome", name="import_chrome")
+     */
+    public function indexAction(Request $request)
+    {
+        return parent::indexAction($request);
+    }
+
     /**
      * {@inheritdoc}
      */
@@ -29,13 +37,5 @@ class ChromeController extends BrowserController
     protected function getImportTemplate()
     {
         return 'WallabagImportBundle:Chrome:index.html.twig';
-    }
-
-    /**
-     * @Route("/chrome", name="import_chrome")
-     */
-    public function indexAction(Request $request)
-    {
-        return parent::indexAction($request);
     }
 }

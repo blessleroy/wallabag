@@ -1,13 +1,14 @@
 <?php
 
-namespace Tests\Wallabag\ImportBundle\Consumer\AMQP;
+namespace Tests\Wallabag\ImportBundle\Consumer;
 
-use Wallabag\ImportBundle\Consumer\AMQPEntryConsumer;
 use PhpAmqpLib\Message\AMQPMessage;
-use Wallabag\UserBundle\Entity\User;
+use PHPUnit\Framework\TestCase;
 use Wallabag\CoreBundle\Entity\Entry;
+use Wallabag\ImportBundle\Consumer\AMQPEntryConsumer;
+use Wallabag\UserBundle\Entity\User;
 
-class AMQPEntryConsumerTest extends \PHPUnit_Framework_TestCase
+class AMQPEntryConsumerTest extends TestCase
 {
     public function testMessageOk()
     {

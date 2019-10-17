@@ -4,37 +4,44 @@ namespace Wallabag\UserBundle\Entity;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Mapping as ORM;
-use Scheb\TwoFactorBundle\Model\Email\TwoFactorInterface;
-use Scheb\TwoFactorBundle\Model\TrustedComputerInterface;
 use FOS\UserBundle\Model\User as BaseUser;
-use JMS\Serializer\Annotation\ExclusionPolicy;
-use JMS\Serializer\Annotation\Expose;
+use JMS\Serializer\Annotation\Accessor;
+use JMS\Serializer\Annotation\Groups;
+use JMS\Serializer\Annotation\XmlRoot;
+use Scheb\TwoFactorBundle\Model\BackupCodeInterface;
+use Scheb\TwoFactorBundle\Model\Email\TwoFactorInterface as EmailTwoFactorInterface;
+use Scheb\TwoFactorBundle\Model\Google\TwoFactorInterface as GoogleTwoFactorInterface;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Wallabag\ApiBundle\Entity\Client;
 use Wallabag\CoreBundle\Entity\Config;
 use Wallabag\CoreBundle\Entity\Entry;
+use Wallabag\CoreBundle\Helper\EntityTimestampsTrait;
 
 /**
  * User.
  *
+ * @XmlRoot("user")
  * @ORM\Entity(repositoryClass="Wallabag\UserBundle\Repository\UserRepository")
  * @ORM\Table(name="`user`")
  * @ORM\HasLifecycleCallbacks()
- * @ExclusionPolicy("all")
  *
  * @UniqueEntity("email")
  * @UniqueEntity("username")
  */
-class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterface
+class User extends BaseUser implements EmailTwoFactorInterface, GoogleTwoFactorInterface, BackupCodeInterface
 {
+    use EntityTimestampsTrait;
+
+    /** @Serializer\XmlAttribute */
     /**
      * @var int
      *
-     * @Expose
      * @ORM\Column(name="id", type="integer")
      * @ORM\Id
      * @ORM\GeneratedValue(strategy="AUTO")
+     *
+     * @Groups({"user_api", "user_api_with_client"})
      */
     protected $id;
 
@@ -42,20 +49,40 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
      * @var string
      *
      * @ORM\Column(name="name", type="text", nullable=true)
+     *
+     * @Groups({"user_api", "user_api_with_client"})
      */
     protected $name;
 
     /**
-     * @var date
+     * @var string
+     *
+     * @Groups({"user_api", "user_api_with_client"})
+     */
+    protected $username;
+
+    /**
+     * @var string
+     *
+     * @Groups({"user_api", "user_api_with_client"})
+     */
+    protected $email;
+
+    /**
+     * @var \DateTime
      *
      * @ORM\Column(name="created_at", type="datetime")
+     *
+     * @Groups({"user_api", "user_api_with_client"})
      */
     protected $createdAt;
 
     /**
-     * @var date
+     * @var \DateTime
      *
      * @ORM\Column(name="updated_at", type="datetime")
+     *
+     * @Groups({"user_api", "user_api_with_client"})
      */
     protected $updatedAt;
 
@@ -70,44 +97,54 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
     protected $config;
 
     /**
+     * @var ArrayCollection
+     *
+     * @ORM\OneToMany(targetEntity="Wallabag\CoreBundle\Entity\SiteCredential", mappedBy="user", cascade={"remove"})
+     */
+    protected $siteCredentials;
+
+    /**
+     * @var ArrayCollection
+     *
+     * @ORM\OneToMany(targetEntity="Wallabag\ApiBundle\Entity\Client", mappedBy="user", cascade={"remove"})
+     */
+    protected $clients;
+
+    /**
+     * @see getFirstClient() below
+     *
+     * @Groups({"user_api_with_client"})
+     * @Accessor(getter="getFirstClient")
+     */
+    protected $default_client;
+
+    /**
      * @ORM\Column(type="integer", nullable=true)
      */
     private $authCode;
 
     /**
-     * @var bool Enabled yes/no
-     * @ORM\Column(type="boolean")
+     * @ORM\Column(name="googleAuthenticatorSecret", type="string", nullable=true)
      */
-    private $twoFactorAuthentication = false;
+    private $googleAuthenticatorSecret;
 
     /**
      * @ORM\Column(type="json_array", nullable=true)
      */
-    private $trusted;
+    private $backupCodes;
 
     /**
-     * @ORM\OneToMany(targetEntity="Wallabag\ApiBundle\Entity\Client", mappedBy="user", cascade={"remove"})
+     * @var bool
+     *
+     * @ORM\Column(type="boolean")
      */
-    protected $clients;
+    private $emailTwoFactor = false;
 
     public function __construct()
     {
         parent::__construct();
         $this->entries = new ArrayCollection();
         $this->roles = ['ROLE_USER'];
-    }
-
-    /**
-     * @ORM\PrePersist
-     * @ORM\PreUpdate
-     */
-    public function timestamps()
-    {
-        if (is_null($this->createdAt)) {
-            $this->createdAt = new \DateTime();
-        }
-
-        $this->updatedAt = new \DateTime();
     }
 
     /**
@@ -135,7 +172,7 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
     }
 
     /**
-     * @return string
+     * @return \DateTime
      */
     public function getCreatedAt()
     {
@@ -143,7 +180,7 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
     }
 
     /**
-     * @return string
+     * @return \DateTime
      */
     public function getUpdatedAt()
     {
@@ -202,49 +239,119 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
     /**
      * @return bool
      */
-    public function isTwoFactorAuthentication()
+    public function isEmailTwoFactor()
     {
-        return $this->twoFactorAuthentication;
+        return $this->emailTwoFactor;
     }
 
     /**
-     * @param bool $twoFactorAuthentication
+     * @param bool $emailTwoFactor
      */
-    public function setTwoFactorAuthentication($twoFactorAuthentication)
+    public function setEmailTwoFactor($emailTwoFactor)
     {
-        $this->twoFactorAuthentication = $twoFactorAuthentication;
+        $this->emailTwoFactor = $emailTwoFactor;
     }
 
-    public function isEmailAuthEnabled()
+    /**
+     * Used in the user config form to be "like" the email option.
+     */
+    public function isGoogleTwoFactor()
     {
-        return $this->twoFactorAuthentication;
+        return $this->isGoogleAuthenticatorEnabled();
     }
 
-    public function getEmailAuthCode()
+    /**
+     * {@inheritdoc}
+     */
+    public function isEmailAuthEnabled(): bool
+    {
+        return $this->emailTwoFactor;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getEmailAuthCode(): string
     {
         return $this->authCode;
     }
 
-    public function setEmailAuthCode($authCode)
+    /**
+     * {@inheritdoc}
+     */
+    public function setEmailAuthCode(string $authCode): void
     {
         $this->authCode = $authCode;
     }
 
-    public function addTrustedComputer($token, \DateTime $validUntil)
+    /**
+     * {@inheritdoc}
+     */
+    public function getEmailAuthRecipient(): string
     {
-        $this->trusted[$token] = $validUntil->format('r');
+        return $this->email;
     }
 
-    public function isTrustedComputer($token)
+    /**
+     * {@inheritdoc}
+     */
+    public function isGoogleAuthenticatorEnabled(): bool
     {
-        if (isset($this->trusted[$token])) {
-            $now = new \DateTime();
-            $validUntil = new \DateTime($this->trusted[$token]);
+        return $this->googleAuthenticatorSecret ? true : false;
+    }
 
-            return $now < $validUntil;
+    /**
+     * {@inheritdoc}
+     */
+    public function getGoogleAuthenticatorUsername(): string
+    {
+        return $this->username;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getGoogleAuthenticatorSecret(): string
+    {
+        return $this->googleAuthenticatorSecret;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setGoogleAuthenticatorSecret(?string $googleAuthenticatorSecret): void
+    {
+        $this->googleAuthenticatorSecret = $googleAuthenticatorSecret;
+    }
+
+    public function setBackupCodes(array $codes = null)
+    {
+        $this->backupCodes = $codes;
+    }
+
+    public function getBackupCodes()
+    {
+        return $this->backupCodes;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function isBackupCode(string $code): bool
+    {
+        return false === $this->findBackupCode($code) ? false : true;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function invalidateBackupCode(string $code): void
+    {
+        $key = $this->findBackupCode($code);
+
+        if (false !== $key) {
+            unset($this->backupCodes[$key]);
         }
-
-        return false;
     }
 
     /**
@@ -265,5 +372,37 @@ class User extends BaseUser implements TwoFactorInterface, TrustedComputerInterf
     public function getClients()
     {
         return $this->clients;
+    }
+
+    /**
+     * Only used by the API when creating a new user it'll also return the first client (which was also created at the same time).
+     *
+     * @return Client
+     */
+    public function getFirstClient()
+    {
+        if (!empty($this->clients)) {
+            return $this->clients->first();
+        }
+    }
+
+    /**
+     * Try to find a backup code from the list of backup codes of the current user.
+     *
+     * @param string $code Given code from the user
+     *
+     * @return string|false
+     */
+    private function findBackupCode(string $code)
+    {
+        foreach ($this->backupCodes as $key => $backupCode) {
+            // backup code are hashed using `password_hash`
+            // see ConfigController->otpAppAction
+            if (password_verify($code, $backupCode)) {
+                return $key;
+            }
+        }
+
+        return false;
     }
 }

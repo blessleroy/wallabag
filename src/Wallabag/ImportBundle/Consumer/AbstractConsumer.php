@@ -3,14 +3,14 @@
 namespace Wallabag\ImportBundle\Consumer;
 
 use Doctrine\ORM\EntityManager;
-use Wallabag\ImportBundle\Import\AbstractImport;
-use Wallabag\UserBundle\Repository\UserRepository;
-use Wallabag\CoreBundle\Entity\Entry;
-use Wallabag\CoreBundle\Entity\Tag;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Wallabag\CoreBundle\Entity\Entry;
+use Wallabag\CoreBundle\Entity\Tag;
 use Wallabag\CoreBundle\Event\EntrySavedEvent;
+use Wallabag\ImportBundle\Import\AbstractImport;
+use Wallabag\UserBundle\Repository\UserRepository;
 
 abstract class AbstractConsumer
 {
@@ -52,6 +52,13 @@ abstract class AbstractConsumer
 
         $this->import->setUser($user);
 
+        if (false === $this->import->validateEntry($storedEntry)) {
+            $this->logger->warning('Entry is invalid', ['entry' => $storedEntry]);
+
+            // return true to skip message
+            return true;
+        }
+
         $entry = $this->import->parseEntry($storedEntry);
 
         if (null === $entry) {
@@ -76,7 +83,7 @@ abstract class AbstractConsumer
             return false;
         }
 
-        $this->logger->info('Content with url imported! ('.$entry->getUrl().')');
+        $this->logger->info('Content with url imported! (' . $entry->getUrl() . ')');
 
         return true;
     }

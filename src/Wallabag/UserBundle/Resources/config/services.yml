@@ -7,7 +7,7 @@ services:
             - "%scheb_two_factor.email.sender_email%"
             - "%scheb_two_factor.email.sender_name%"
             - '@=service(''craue_config'').get(''wallabag_support_url'')'
-            - '@=service(''craue_config'').get(''wallabag_url'')'
+            - '%domain_name%'
 
     wallabag_user.password_resetting:
         class: Wallabag\UserBundle\EventListener\PasswordResettingListener
@@ -28,10 +28,19 @@ services:
             - "@doctrine.orm.entity_manager"
             - "%wallabag_core.theme%"
             - "%wallabag_core.items_on_page%"
-            - "%wallabag_core.rss_limit%"
+            - "%wallabag_core.feed_limit%"
             - "%wallabag_core.language%"
             - "%wallabag_core.reading_speed%"
             - "%wallabag_core.action_mark_as_read%"
             - "%wallabag_core.list_mode%"
+            - "@session"
         tags:
             - { name: kernel.event_subscriber }
+
+    wallabag_user.listener.authentication_failure_event_listener:
+        class: Wallabag\UserBundle\EventListener\AuthenticationFailureListener
+        arguments:
+            - "@request_stack"
+            - "@logger"
+        tags:
+            - { name: kernel.event_listener, event: security.authentication.failure, method: onAuthenticationFailure }

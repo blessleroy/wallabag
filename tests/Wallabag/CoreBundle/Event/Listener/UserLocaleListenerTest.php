@@ -2,6 +2,7 @@
 
 namespace Tests\Wallabag\CoreBundle\Event\Listener;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
@@ -11,7 +12,7 @@ use Wallabag\CoreBundle\Entity\Config;
 use Wallabag\CoreBundle\Event\Listener\UserLocaleListener;
 use Wallabag\UserBundle\Entity\User;
 
-class UserLocaleListenerTest extends \PHPUnit_Framework_TestCase
+class UserLocaleListenerTest extends TestCase
 {
     public function testWithLanguage()
     {
@@ -32,7 +33,7 @@ class UserLocaleListenerTest extends \PHPUnit_Framework_TestCase
 
         $listener->onInteractiveLogin($event);
 
-        $this->assertEquals('fr', $session->get('_locale'));
+        $this->assertSame('fr', $session->get('_locale'));
     }
 
     public function testWithoutLanguage()
@@ -53,6 +54,29 @@ class UserLocaleListenerTest extends \PHPUnit_Framework_TestCase
 
         $listener->onInteractiveLogin($event);
 
-        $this->assertEquals('', $session->get('_locale'));
+        $this->assertNull($session->get('_locale'));
+    }
+
+    public function testWithLanguageFromSession()
+    {
+        $session = new Session(new MockArraySessionStorage());
+        $listener = new UserLocaleListener($session);
+        $session->set('_locale', 'de');
+
+        $user = new User();
+        $user->setEnabled(true);
+
+        $config = new Config($user);
+        $config->setLanguage('fr');
+
+        $user->setConfig($config);
+
+        $userToken = new UsernamePasswordToken($user, '', 'test');
+        $request = Request::create('/');
+        $event = new InteractiveLoginEvent($request, $userToken);
+
+        $listener->onInteractiveLogin($event);
+
+        $this->assertSame('de', $session->get('_locale'));
     }
 }

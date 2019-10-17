@@ -2,23 +2,41 @@
 
 namespace Tests\Wallabag\CoreBundle\Command;
 
+use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\Bundle\DoctrineBundle\Command\CreateDatabaseDoctrineCommand;
 use Doctrine\Bundle\DoctrineBundle\Command\DropDatabaseDoctrineCommand;
+use Doctrine\Bundle\MigrationsBundle\Command\MigrationsMigrateDoctrineCommand;
+use Doctrine\DBAL\Platforms\PostgreSqlPlatform;
+use Doctrine\DBAL\Platforms\SqlitePlatform;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Tester\CommandTester;
-use Wallabag\CoreBundle\Command\InstallCommand;
 use Tests\Wallabag\CoreBundle\Mock\InstallCommandMock;
 use Tests\Wallabag\CoreBundle\WallabagCoreTestCase;
+use Wallabag\CoreBundle\Command\InstallCommand;
 
 class InstallCommandTest extends WallabagCoreTestCase
 {
+    public static function setUpBeforeClass()
+    {
+        // disable doctrine-test-bundle
+        StaticDriver::setKeepStaticConnections(false);
+    }
+
+    public static function tearDownAfterClass()
+    {
+        // enable doctrine-test-bundle
+        StaticDriver::setKeepStaticConnections(true);
+    }
+
     public function setUp()
     {
         parent::setUp();
 
-        if ($this->getClient()->getContainer()->get('doctrine')->getConnection()->getDriver() instanceof \Doctrine\DBAL\Driver\PDOPgSql\Driver) {
+        /** @var \Doctrine\DBAL\Connection $connection */
+        $connection = $this->getClient()->getContainer()->get('doctrine')->getConnection();
+        if ($connection->getDatabasePlatform() instanceof PostgreSqlPlatform) {
             /*
              * LOG:  statement: CREATE DATABASE "wallabag"
              * ERROR:  source database "template1" is being accessed by other users
@@ -30,34 +48,40 @@ class InstallCommandTest extends WallabagCoreTestCase
              */
             $this->markTestSkipped('PostgreSQL spotted: can\'t find a good way to drop current database, skipping.');
         }
+
+        if ($connection->getDatabasePlatform() instanceof SqlitePlatform) {
+            // Environnement variable useful only for sqlite to avoid the error "attempt to write a readonly database"
+            // We can't define always this environnement variable because pdo_mysql seems to use it
+            // and we have the error:
+            // SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax;
+            // check the manual that corresponds to your MariaDB server version for the right syntax to use
+            // near '/tmp/wallabag_testTYj1kp' at line 1
+            $databasePath = tempnam(sys_get_temp_dir(), 'wallabag_test');
+            putenv("TEST_DATABASE_PATH=$databasePath");
+
+            // The environnement has been changed, recreate the client in order to update connection
+            parent::setUp();
+        }
+
+        $this->resetDatabase($this->getClient());
     }
 
-    /**
-     * Ensure next tests will have a clean database.
-     */
-    public static function tearDownAfterClass()
+    public function tearDown()
     {
-        $application = new Application(static::$kernel);
-        $application->setAutoExit(false);
+        $databasePath = getenv('TEST_DATABASE_PATH');
+        // Remove variable environnement
+        putenv('TEST_DATABASE_PATH');
 
-        $application->run(new ArrayInput([
-            'command' => 'doctrine:schema:drop',
-            '--no-interaction' => true,
-            '--force' => true,
-            '--env' => 'test',
-        ]), new NullOutput());
+        if ($databasePath && file_exists($databasePath)) {
+            unlink($databasePath);
+        } else {
+            // Create a new client to avoid the error:
+            // Transaction commit failed because the transaction has been marked for rollback only.
+            $client = static::createClient();
+            $this->resetDatabase($client);
+        }
 
-        $application->run(new ArrayInput([
-            'command' => 'doctrine:schema:create',
-            '--no-interaction' => true,
-            '--env' => 'test',
-        ]), new NullOutput());
-
-        $application->run(new ArrayInput([
-            'command' => 'doctrine:fixtures:load',
-            '--no-interaction' => true,
-            '--env' => 'test',
-        ]), new NullOutput());
+        parent::tearDown();
     }
 
     public function testRunInstallCommand()
@@ -67,18 +91,14 @@ class InstallCommandTest extends WallabagCoreTestCase
 
         $command = $application->find('wallabag:install');
 
-        // We mock the QuestionHelper
-        $question = $this->getMockBuilder('Symfony\Component\Console\Helper\QuestionHelper')
-            ->disableOriginalConstructor()
-            ->getMock();
-        $question->expects($this->any())
-            ->method('ask')
-            ->will($this->returnValue('yes_'.uniqid('', true)));
-
-        // We override the standard helper with our mock
-        $command->getHelperSet()->set($question, 'question');
-
         $tester = new CommandTester($command);
+        $tester->setInputs([
+            'y', // dropping database
+            'y', // create super admin
+            'username_' . uniqid('', true), // username
+            'password_' . uniqid('', true), // password
+            'email_' . uniqid('', true) . '@wallabag.it', // email
+        ]);
         $tester->execute([
             'command' => $command->getName(),
         ]);
@@ -96,18 +116,13 @@ class InstallCommandTest extends WallabagCoreTestCase
 
         $command = $application->find('wallabag:install');
 
-        // We mock the QuestionHelper
-        $question = $this->getMockBuilder('Symfony\Component\Console\Helper\QuestionHelper')
-            ->disableOriginalConstructor()
-            ->getMock();
-        $question->expects($this->any())
-            ->method('ask')
-            ->will($this->returnValue('yes_'.uniqid('', true)));
-
-        // We override the standard helper with our mock
-        $command->getHelperSet()->set($question, 'question');
-
         $tester = new CommandTester($command);
+        $tester->setInputs([
+            'y', // create super admin
+            'username_' . uniqid('', true), // username
+            'password_' . uniqid('', true), // password
+            'email_' . uniqid('', true) . '@wallabag.it', // email
+        ]);
         $tester->execute([
             'command' => $command->getName(),
             '--reset' => true,
@@ -115,19 +130,19 @@ class InstallCommandTest extends WallabagCoreTestCase
 
         $this->assertContains('Checking system requirements.', $tester->getDisplay());
         $this->assertContains('Setting up database.', $tester->getDisplay());
-        $this->assertContains('Droping database, creating database and schema, clearing the cache', $tester->getDisplay());
+        $this->assertContains('Dropping database, creating database and schema, clearing the cache', $tester->getDisplay());
         $this->assertContains('Administration setup.', $tester->getDisplay());
         $this->assertContains('Config setup.', $tester->getDisplay());
 
         // we force to reset everything
-        $this->assertContains('Droping database, creating database and schema, clearing the cache', $tester->getDisplay());
+        $this->assertContains('Dropping database, creating database and schema, clearing the cache', $tester->getDisplay());
     }
 
     public function testRunInstallCommandWithDatabaseRemoved()
     {
         // skipped SQLite check when database is removed because while testing for the connection,
         // the driver will create the file (so the database) before testing if database exist
-        if ($this->getClient()->getContainer()->get('doctrine')->getConnection()->getDriver() instanceof \Doctrine\DBAL\Driver\PDOSqlite\Driver) {
+        if ($this->getClient()->getContainer()->get('doctrine')->getConnection()->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\SqlitePlatform) {
             $this->markTestSkipped('SQLite spotted: can\'t test with database removed.');
         }
 
@@ -148,18 +163,13 @@ class InstallCommandTest extends WallabagCoreTestCase
 
         $command = $application->find('wallabag:install');
 
-        // We mock the QuestionHelper
-        $question = $this->getMockBuilder('Symfony\Component\Console\Helper\QuestionHelper')
-            ->disableOriginalConstructor()
-            ->getMock();
-        $question->expects($this->any())
-            ->method('ask')
-            ->will($this->returnValue('yes_'.uniqid('', true)));
-
-        // We override the standard helper with our mock
-        $command->getHelperSet()->set($question, 'question');
-
         $tester = new CommandTester($command);
+        $tester->setInputs([
+            'y', // create super admin
+            'username_' . uniqid('', true), // username
+            'password_' . uniqid('', true), // password
+            'email_' . uniqid('', true) . '@wallabag.it', // email
+        ]);
         $tester->execute([
             'command' => $command->getName(),
         ]);
@@ -180,23 +190,12 @@ class InstallCommandTest extends WallabagCoreTestCase
 
         $command = $application->find('wallabag:install');
 
-        // We mock the QuestionHelper
-        $question = $this->getMockBuilder('Symfony\Component\Console\Helper\QuestionHelper')
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $question->expects($this->exactly(3))
-            ->method('ask')
-            ->will($this->onConsecutiveCalls(
-                false, // don't want to reset the entire database
-                true, // do want to reset the schema
-                false // don't want to create a new user
-            ));
-
-        // We override the standard helper with our mock
-        $command->getHelperSet()->set($question, 'question');
-
         $tester = new CommandTester($command);
+        $tester->setInputs([
+            'n', // don't want to reset the entire database
+            'y', // do want to reset the schema
+            'n', // don't want to create a new user
+        ]);
         $tester->execute([
             'command' => $command->getName(),
         ]);
@@ -206,7 +205,7 @@ class InstallCommandTest extends WallabagCoreTestCase
         $this->assertContains('Administration setup.', $tester->getDisplay());
         $this->assertContains('Config setup.', $tester->getDisplay());
 
-        $this->assertContains('Droping schema and creating schema', $tester->getDisplay());
+        $this->assertContains('Dropping schema and creating schema', $tester->getDisplay());
     }
 
     public function testRunInstallCommandChooseNothing()
@@ -215,6 +214,7 @@ class InstallCommandTest extends WallabagCoreTestCase
         $application->add(new InstallCommand());
         $application->add(new DropDatabaseDoctrineCommand());
         $application->add(new CreateDatabaseDoctrineCommand());
+        $application->add(new MigrationsMigrateDoctrineCommand());
 
         // drop database first, so the install command won't ask to reset things
         $command = new DropDatabaseDoctrineCommand();
@@ -235,22 +235,11 @@ class InstallCommandTest extends WallabagCoreTestCase
 
         $command = $application->find('wallabag:install');
 
-        // We mock the QuestionHelper
-        $question = $this->getMockBuilder('Symfony\Component\Console\Helper\QuestionHelper')
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $question->expects($this->exactly(2))
-            ->method('ask')
-            ->will($this->onConsecutiveCalls(
-                false, // don't want to reset the entire database
-                false // don't want to create a new user
-            ));
-
-        // We override the standard helper with our mock
-        $command->getHelperSet()->set($question, 'question');
-
         $tester = new CommandTester($command);
+        $tester->setInputs([
+            'n', // don't want to reset the entire database
+            'n', // don't want to create a new user
+        ]);
         $tester->execute([
             'command' => $command->getName(),
         ]);
@@ -270,21 +259,11 @@ class InstallCommandTest extends WallabagCoreTestCase
 
         $command = $application->find('wallabag:install');
 
-        // We mock the QuestionHelper
-        $question = $this->getMockBuilder('Symfony\Component\Console\Helper\QuestionHelper')
-            ->disableOriginalConstructor()
-            ->getMock();
-        $question->expects($this->any())
-            ->method('ask')
-            ->will($this->returnValue('yes_'.uniqid('', true)));
-
-        // We override the standard helper with our mock
-        $command->getHelperSet()->set($question, 'question');
-
         $tester = new CommandTester($command);
         $tester->execute([
             'command' => $command->getName(),
-            '--no-interaction' => true,
+        ], [
+            'interactive' => false,
         ]);
 
         $this->assertContains('Checking system requirements.', $tester->getDisplay());

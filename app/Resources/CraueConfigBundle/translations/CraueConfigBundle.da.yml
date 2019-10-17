@@ -12,14 +12,16 @@ export_xml: Aktiver eksport til XML
 # import_with_rabbitmq: Enable RabbitMQ to import data asynchronously
 # import_with_redis: Enable Redis to import data asynchronously
 shaarli_url: Shaarli-URL, hvis tjenesten er aktiv
+scuttle_url: Scuttle-URL, hvis tjenesten er aktiv
+unmark_url: Unmark-URL, hvis tjenesten er aktiv
 share_diaspora: Aktiver deling til Diaspora
 share_mail: Aktiver deling med email
 share_shaarli: Aktiver deling gennem Shaarli
+share_scuttle: Aktiver deling gennem Scuttle
 share_twitter: Aktiver deling gennem Twitter
 share_unmark: Aktiver deling gennem Unmark.it
 show_printlink: Vis et link til print-indhold
 wallabag_support_url: Support-URL for wallabag
-wallabag_url: URL for *sin* wallabag-installation
 entry: "artikel"
 export: "eksport"
 import: "import"
@@ -33,3 +35,6 @@ demo_mode_username: "Demobruger"
 # share_public: Allow public url for entries
 # download_images_enabled: Download images locally
 # restricted_access: Enable authentication for websites with paywall
+# api_user_registration: Enable user to be registered using the API
+# store_article_headers: Enable if wallabag stores HTTP headers for each article
+# shaarli_share_origin_url: Enable sharing origin url to Shaarli, if the service is enabled

@@ -2,33 +2,16 @@
 
 namespace Application\Migrations;
 
-use Doctrine\DBAL\Migrations\AbstractMigration;
 use Doctrine\DBAL\Schema\Schema;
-use Symfony\Component\DependencyInjection\ContainerAwareInterface;
-use Symfony\Component\DependencyInjection\ContainerInterface;
+use Wallabag\CoreBundle\Doctrine\WallabagMigration;
 
 /**
- * Added indexes on wallabag_entry.is_starred and wallabag_entry.is_archived
+ * Added indexes on wallabag_entry.is_starred and wallabag_entry.is_archived.
  */
-class Version20170127093841 extends AbstractMigration implements ContainerAwareInterface
+class Version20170127093841 extends WallabagMigration
 {
-    /**
-     * @var ContainerInterface
-     */
-    private $container;
-
     private $indexStarredName = 'IDX_entry_starred';
     private $indexArchivedName = 'IDX_entry_archived';
-
-    public function setContainer(ContainerInterface $container = null)
-    {
-        $this->container = $container;
-    }
-
-    private function getTable($tableName)
-    {
-        return $this->container->getParameter('database_table_prefix').$tableName;
-    }
 
     /**
      * @param Schema $schema

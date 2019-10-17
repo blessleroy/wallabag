@@ -4,6 +4,7 @@ namespace Wallabag\CoreBundle\Form\Type;
 
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
+use Symfony\Component\Form\Extension\Core\Type\IntegerType;
 use Symfony\Component\Form\Extension\Core\Type\SubmitType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
@@ -37,20 +38,17 @@ class ConfigType extends AbstractType
                 'choices' => array_flip($this->themes),
                 'label' => 'config.form_settings.theme_label',
             ])
-            ->add('items_per_page', null, [
+            ->add('items_per_page', IntegerType::class, [
                 'label' => 'config.form_settings.items_per_page_label',
+                'property_path' => 'itemsPerPage',
             ])
-            ->add('reading_speed', ChoiceType::class, [
+            ->add('reading_speed', IntegerType::class, [
                 'label' => 'config.form_settings.reading_speed.label',
-                'choices' => [
-                    'config.form_settings.reading_speed.100_word' => '0.5',
-                    'config.form_settings.reading_speed.200_word' => '1',
-                    'config.form_settings.reading_speed.300_word' => '1.5',
-                    'config.form_settings.reading_speed.400_word' => '2',
-                ],
+                'property_path' => 'readingSpeed',
             ])
             ->add('action_mark_as_read', ChoiceType::class, [
                 'label' => 'config.form_settings.action_mark_as_read.label',
+                'property_path' => 'actionMarkAsRead',
                 'choices' => [
                     'config.form_settings.action_mark_as_read.redirect_homepage' => Config::REDIRECT_TO_HOMEPAGE,
                     'config.form_settings.action_mark_as_read.redirect_current_page' => Config::REDIRECT_TO_CURRENT_PAGE,
@@ -61,6 +59,7 @@ class ConfigType extends AbstractType
                 'label' => 'config.form_settings.language_label',
             ])
             ->add('pocket_consumer_key', null, [
+                'property_path' => 'pocketConsumerKey',
                 'label' => 'config.form_settings.pocket_consumer_key_label',
             ])
             ->add('save', SubmitType::class, [

@@ -13,6 +13,7 @@
 /bin/*
 !/bin/console
 !/bin/symfony_requirements
+.php_cs.cache
 
 # Parameters
 /app/config/parameters.yml
@@ -22,15 +23,16 @@
 
 # Assets and user uploads
 web/uploads/
-!web/bundles
-web/bundles/*
-!web/bundles/wallabagcore
+/web/bundles/*
+!/web/bundles/.gitkeep
 /web/assets/images/*
 !web/assets/images/.gitkeep
+/web/wallassets/*.dev.js
 
 # Build
 /app/build
 /build
+/coverage
 
 # Composer PHAR
 /composer.phar
@@ -42,12 +44,14 @@ data/db/wallabag*.sqlite
 docker/logs/
 docker/data/
 
-# To avoid crazy stuff on some PR, we must manually FORCE ADD IT on each new release
-composer.lock
-
 # assets stuff
 node_modules/
 bin
 app/Resources/build/
 !/src/Wallabag/CoreBundle/Resources/public
 /src/Wallabag/CoreBundle/Resources/public/*
+
+# Test-generated files
+admin-export.json
+specialexport.json
+/data/site-credentials-secret-key.txt

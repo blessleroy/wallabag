@@ -1,6 +1,6 @@
 {% extends "WallabagCoreBundle::layout.html.twig" %}
 
-{% block title %}{{ entry.title|striptags|raw }} ({{ entry.domainName|removeWww }}){% endblock %}
+{% block title %}{{ entry.title|striptags|default('entry.default_title'|trans)|raw }} ({{ entry.domainName|removeWww }}){% endblock %}
 
 {% block body_class %}entry{% endblock %}
 
@@ -9,28 +9,28 @@
         <div class="determinate"></div>
     </div>
     <nav class="hide-on-large-only">
-        <div class="nav-wrapper cyan darken-1">
+        <div class="nav-panel-item cyan darken-1">
             <ul>
                 <li>
+                    <a href="#" data-activates="slide-out" class="button-collapse">
+                        <i class="material-icons">menu</i>
+                    </a>
+                </li>
+                <li>
                     <a class="waves-effect" href="{{ path('homepage') }}">
-                        <i class="material-icons">exit_to_app</i>
+                        <i class="material-icons">arrow_back</i>
                     </a>
                 </li>
             </ul>
             <ul class="right">
                 <li>
                     <a class="waves-effect" title="{{ 'entry.view.left_menu.set_as_read'|trans }}" href="{{ path('archive_entry', { 'id': entry.id }) }}" id="markAsRead">
-                        <i class="material-icons small">{% if entry.isArchived == 0 %}done{% else %}redo{% endif %}</i>
+                        <i class="material-icons small">{% if entry.isArchived == 0 %}done{% else %}unarchive{% endif %}</i>
                     </a>
                 </li>
                 <li>
                     <a class="waves-effect" title="{{ 'entry.view.left_menu.set_as_starred'|trans }}" href="{{ path('star_entry', { 'id': entry.id }) }}" id="setFav">
                         <i class="material-icons small">{% if entry.isStarred == 0 %}star_outline{% else %}star{% endif %}</i>
-                    </a>
-                </li>
-                <li>
-                    <a href="#" data-activates="slide-out" class="button-collapse right">
-                        <i class="material-icons">menu</i>
                     </a>
                 </li>
             </ul>
@@ -39,14 +39,14 @@
     <ul id="slide-out" class="collapsible side-nav fixed reader-mode" data-collapsible="accordion">
         <li class="bold border-bottom hide-on-med-and-down">
             <a class="waves-effect collapsible-header" href="{{ path('homepage') }}">
-                <i class="material-icons small">exit_to_app</i>
+                <i class="material-icons small">arrow_back</i>
                 <span>{{ 'entry.view.left_menu.back_to_homepage'|trans }}</span>
             </a>
             <div class="collapsible-body"></div>
         </li>
 
         <li class="bold border-bottom hide-on-med-and-down">
-            <a class="waves-effect collapsible-header original" href="{{ entry.url|e }}" target="_blank">
+            <a class="waves-effect collapsible-header original" href="{{ entry.url|e }}" target="_blank" rel="noopener">
                 <i class="material-icons small">link</i>
                 <span>{{ 'entry.view.left_menu.view_original_article'|trans }}</span>
             </a>
@@ -55,7 +55,7 @@
 
         <li class="bold">
             <a class="waves-effect collapsible-header" title="{{ 'entry.view.left_menu.re_fetch_content'|trans }}" href="{{ path('reload_entry', { 'id': entry.id }) }}" id="reload">
-                <i class="material-icons small">autorenew</i>
+                <i class="material-icons small">refresh</i>
                 <span>{{ 'entry.view.left_menu.re_fetch_content'|trans }}</span>
             </a>
             <div class="collapsible-body"></div>
@@ -68,7 +68,7 @@
 
         <li class="bold hide-on-med-and-down">
             <a class="waves-effect collapsible-header markasread" title="{{ markAsReadLabel|trans }}" href="{{ path('archive_entry', { 'id': entry.id }) }}" id="markAsRead">
-                <i class="material-icons small">{% if entry.isArchived == 0 %}done{% else %}redo{% endif %}</i>
+                <i class="material-icons small">{% if entry.isArchived == 0 %}done{% else %}unarchive{% endif %}</i>
                 <span>{{ markAsReadLabel|trans }}</span>
             </a>
             <div class="collapsible-body"></div>
@@ -82,7 +82,7 @@
             <div class="collapsible-body"></div>
         </li>
         <li class="bold border-bottom">
-            <a class="waves-effect collapsible-header delete" title="{{ 'entry.view.left_menu.delete'|trans }}" href="{{ path('delete_entry', { 'id': entry.id }) }}">
+            <a class="waves-effect collapsible-header delete" onclick="return confirm('{{ 'entry.confirm.delete'|trans|escape('js') }}')" title="{{ 'entry.view.left_menu.delete'|trans }}" href="{{ path('delete_entry', { 'id': entry.id }) }}">
                 <i class="material-icons small">delete</i>
                 <span>{{ 'entry.view.left_menu.delete'|trans }}</span>
             </a>
@@ -97,6 +97,15 @@
             <div class="collapsible-body"></div>
         </li>
 
+        {% if craue_setting('share_public')
+           or craue_setting('share_twitter')
+           or craue_setting('share_shaarli')
+           or craue_setting('share_scuttle')
+           or craue_setting('share_diaspora')
+           or craue_setting('share_unmark')
+           or craue_setting('carrot')
+           or craue_setting('share_mail')
+        %}
         <li class="bold">
             <a class="waves-effect collapsible-header">
                 <i class="material-icons small">share</i>
@@ -118,46 +127,50 @@
                     {% endif %}
                     {% if craue_setting('share_twitter') %}
                         <li>
-                            <a href="https://twitter.com/home?status={{entry.title|striptags|url_encode}}%20{{ entry.url|url_encode }}%20via%20@wallabagapp" target="_blank" class="tool icon-twitter" title="twitter">
+                            <a href="https://twitter.com/home?status={{entry.title|striptags|url_encode}}%20{{ entry.url|url_encode }}%20via%20@wallabagapp" target="_blank" rel="noopener" class="tool icon-twitter" title="twitter">
                                 <span>twitter</span>
                             </a>
                         </li>
                     {% endif %}
                     {% if craue_setting('share_shaarli') %}
                         <li>
-                        <a href="{{ craue_setting('shaarli_url') }}/index.php?post={{ entry.url|url_encode }}&amp;title={{ entry.title|striptags|url_encode }}&amp;tags={{ entry.tags|join(',')|striptags|url_encode }}" target="_blank">
-                                <i class="tool icon-image icon-image--shaarli" title="shaarli"></i>
+                        <a href="{{ craue_setting('shaarli_url') }}/index.php?post={{ entry.url|url_encode }}&amp;title={{ entry.title|striptags|url_encode }}&amp;tags={{ entry.tags|join(',')|striptags|url_encode }}{% if craue_setting('shaarli_share_origin_url') %}&amp;original_url={{ entry.originUrl|url_encode }}{% endif %}" target="_blank" rel="noopener" title="shaarli" class="tool icon-image shaarli">
                                 <span>shaarli</span>
+                            </a>
+                        </li>
+                    {% endif %}
+                    {% if craue_setting('share_scuttle') %}
+                        <li>
+                        <a href="{{ craue_setting('scuttle_url') }}/bookmarks.php?action=add&amp;address={{ entry.url|url_encode }}&amp;title={{ entry.title|striptags|url_encode }}&amp;tags={{ entry.tags|join(',')|striptags|url_encode }}" target="_blank" rel="noopener" title="scuttle" class="tool icon-image scuttle">
+                                <span>scuttle</span>
                             </a>
                         </li>
                     {% endif %}
                     {% if craue_setting('share_diaspora') %}
                         <li>
-                            <a href="{{ craue_setting('diaspora_url') }}/bookmarklet?url={{ entry.url|url_encode }}&amp;title={{ entry.title|striptags|url_encode }}&amp;notes=&amp;v=1&amp;noui=1&amp;jump=doclose" target="_blank">
-                                <i class="tool icon-image icon-image--diaspora" title="diaspora"></i>
+                            <a href="{{ craue_setting('diaspora_url') }}/bookmarklet?url={{ entry.url|url_encode }}&amp;title={{ entry.title|striptags|url_encode }}&amp;notes=&amp;v=1&amp;noui=1&amp;jump=doclose" target="_blank" rel="noopener" class="tool icon-image diaspora" title="diaspora">
                                 <span>diaspora*</span>
                             </a>
                         </li>
                     {% endif %}
                     {% if craue_setting('share_unmark') %}
                         <li>
-                            <a href="{{ craue_setting('unmark_url') }}/mark/add?url={{ entry.url|url_encode }}&amp;title={{entry.title|striptags|url_encode}}&amp;v=6" target="_blank">
-                                <i class="tool icon-image icon-image--unmark" title="unmark"></i>
+                            <a href="{{ craue_setting('unmark_url') }}/mark/add?url={{ entry.url|url_encode }}&amp;title={{entry.title|striptags|url_encode}}&amp;v=6" target="_blank" rel="noopener" class="tool icon-image unmark" title="unmark">
                                 <span>unmark.it</span>
                             </a>
                         </li>
                     {% endif %}
                     {% if craue_setting('carrot') %}
                         <li>
-                            <a href="https://secure.carrot.org/GiveAndGetBack.do?url={{ entry.url|url_encode }}&amp;title={{ entry.title|striptags|url_encode }}" target="_blank" title="carrot">
-                                <i class="tool icon-image icon-image--carrot"></i>
+                            <a href="https://secure.carrot.org/GiveAndGetBack.do?url={{ entry.url|url_encode }}&amp;title={{ entry.title|striptags|url_encode }}" target="_blank" rel="noopener" title="carrot" class="tool icon-image carrot">
                                 <span>Carrot</span>
                             </a>
                         </li>
                     {% endif %}
                     {% if craue_setting('share_mail') %}
                         <li>
-                            <a href="mailto:?subject={{ entry.title|striptags|url_encode }}&amp;body={{ entry.url|url_encode }}%20via%20@wallabagapp" title="{{ 'entry.view.left_menu.share_email_label'|trans }}" class="tool email icon icon-mail">
+                            <a href="mailto:?subject={{ entry.title|striptags|url_encode }}&amp;body={{ entry.url|url_encode }}%20via%20@wallabagapp" title="{{ 'entry.view.left_menu.share_email_label'|trans }}" class="tool icon">
+                                <i class="material-icons vertical-align-middle">mail</i>
                                 <span>{{ 'entry.view.left_menu.share_email_label'|trans }}</span>
                             </a>
                         </li>
@@ -165,6 +178,7 @@
                 </ul>
             </div>
         </li>
+        {% endif %}
 
         {% if craue_setting('show_printlink') %}
         <li class="bold border-bottom hide-on-med-and-down">
@@ -179,7 +193,7 @@
         <li class="bold">
             <a class="waves-effect collapsible-header">
                 <i class="material-icons small">file_download</i>
-                <span>{{ 'entry.view.left_menu.download'|trans }}</span>
+                <span>{{ 'entry.view.left_menu.export'|trans }}</span>
             </a>
             <div class="collapsible-body">
                 <ul>
@@ -195,7 +209,7 @@
         </li>
 
         <li class="bold">
-            <a class="waves-effect collapsible-header" href="mailto:hello@wallabag.org?subject=Wrong%20display%20in%20wallabag&amp;body={{ entry.url|url_encode }}" title="{{ 'entry.view.left_menu.problem.description'|trans }}">
+            <a class="waves-effect collapsible-header" href="mailto:siteconfig@wallabag.org?subject=Wrong%20display%20in%20wallabag&amp;body={{ entry.url|url_encode }}" title="{{ 'entry.view.left_menu.problem.description'|trans }}">
                 <i class="material-icons small">error</i>
                 <span>{{ 'entry.view.left_menu.problem.label'|trans }}</span>
             </a>
@@ -209,43 +223,57 @@
 {% block content %}
     <div id="article">
         <header class="mbm">
-            <h1>{{ entry.title|striptags|raw }} <a href="{{ path('edit', { 'id': entry.id }) }}" title="{{ 'entry.view.edit_title'|trans }}">✎</a></h1>
+            <h1>{{ entry.title|striptags|default('entry.default_title'|trans)|raw }} <a href="{{ path('edit', { 'id': entry.id }) }}" title="{{ 'entry.view.edit_title'|trans }}">✎</a></h1>
         </header>
         <aside>
-            <ul class="tools">
-                <li>
-                    {% include "@WallabagCore/themes/material/Entry/_reading_time.html.twig" with {'entry': entry} only %}
-                </li>
-                <li>
-                    <i class="material-icons" title="{{ 'entry.view.created_at'|trans }}">today</i>
-                    {{ entry.createdAt|date('Y-m-d') }}
-                </li>
-                <li>
-                    <i class="material-icons link">link</i>
-                    <a href="{{ entry.url|e }}" target="_blank" title="{{ 'entry.view.original_article'|trans }} : {{ entry.title|striptags }}" class="tool">
-                        {{ entry.domainName|removeWww }}
-                    </a>
-                </li>
-                <li>
-                    <i class="material-icons link">comment</i>
-                    {{ 'entry.view.annotations_on_the_entry'|transchoice(entry.annotations | length) }}
-                </li>
-                <li id="list">
-                    {% for tag in entry.tags %}
-                        <div class="chip">
-                        <a href="{{ path('tag_entries', {'slug': tag.slug}) }}">{{ tag.label }}</a> <a href="{{ path('remove_tag', { 'entry': entry.id, 'tag': tag.id }) }}"><i class="material-icons">delete</i></a>
-                        </div>
-                    {% endfor %}
-                </li>
-            </ul>
+            <div class="tools">
+                <ul class="stats">
+                    <li>
+                        {% include "@WallabagCore/themes/material/Entry/_reading_time.html.twig" with {'entry': entry} only %}
+                    </li>
+                    <li>
+                        <i class="material-icons" title="{{ 'entry.view.created_at'|trans }}">today</i>
+                        {{ entry.createdAt|date('Y-m-d H:i') }}
+                    </li>
+                    {% if entry.publishedAt is not null %}
+                    <li>
+                        <i class="material-icons" title="{{ 'entry.view.published_at'|trans }}">create</i>
+                        {{ entry.publishedAt|date('Y-m-d H:i') }}
+                    </li>
+                    {% endif %}
+                    {% if entry.publishedBy is not empty %}
+                        <li>
+                            <i class="material-icons" title="{{ 'entry.view.published_by'|trans }}">person</i>
+                            {% for author in entry.publishedBy %}
+                                {{ author|raw }}{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </li>
+                    {% endif %}
+                    <li>
+                        <i class="material-icons">link</i>
+                        <a href="{{ entry.url|e }}" target="_blank" rel="noopener" title="{{ 'entry.view.original_article'|trans }} : {{ entry.title|striptags }}" class="tool">
+                            {{ entry.domainName|removeWww }}
+                        </a>
+                    </li>
+                    <li>
+                        <i class="material-icons">comment</i>
+                        {{ 'entry.view.annotations_on_the_entry'|transchoice(entry.annotations | length) }}
+                    </li>
+                    {% if entry.originUrl is not empty %}
+                        <li>
+                            <i class="material-icons" title="{{ 'entry.view.provided_by'|trans }}">launch</i>
+                            <a href="{{ entry.originUrl|e }}" target="_blank" rel="noopener" class="tool">
+                                {{ entry.originUrl|striptags|removeSchemeAndWww|truncate(32) }}
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+                {% include "@WallabagCore/themes/material/Entry/_tags.html.twig" with {'tags': entry.tags, 'entryId': entry.id, 'withRemove': true} only %}
+            </div>
 
             <div class="input-field nav-panel-add-tag" style="display: none">
                 {{ render(controller( "WallabagCoreBundle:Tag:addTagForm", { 'id': entry.id } )) }}
             </div>
-
-            {% if entry.previewPicture is not null %}
-                <div><img class="preview" src="{{ entry.previewPicture }}" alt="{{ entry.title|striptags|e('html_attr') }}" /></div>
-            {% endif %}
 
         </aside>
         <article>
@@ -257,9 +285,9 @@
               <i class="material-icons">menu</i>
             </a>
             <ul>
-              <li><a class="btn-floating" href="{{ path('archive_entry', { 'id': entry.id }) }}"><i class="material-icons">done</i></a></li>
-              <li><a class="btn-floating" href="{{ path('star_entry', { 'id': entry.id }) }}"><i class="material-icons">star_outline</i></a></li>
-              <li><a class="btn-floating" href="{{ path('delete_entry', { 'id': entry.id }) }}"><i class="material-icons">delete</i></a></li>
+              <li><a class="btn-floating" href="{{ path('archive_entry', { 'id': entry.id }) }}"><i class="material-icons">{% if entry.isArchived == 0 %}done{% else %}unarchive{% endif %}</i></a></li>
+              <li><a class="btn-floating" href="{{ path('star_entry', { 'id': entry.id }) }}"><i class="material-icons">{% if entry.isStarred == 0 %}star_outline{% else %}star{% endif %}</i></a></li>
+              <li><a class="btn-floating" href="{{ path('delete_entry', { 'id': entry.id }) }}" onclick="return confirm('{{ 'entry.confirm.delete'|trans|escape('js') }}')"><i class="material-icons">delete</i></a></li>
             </ul>
         </div>
     </div>

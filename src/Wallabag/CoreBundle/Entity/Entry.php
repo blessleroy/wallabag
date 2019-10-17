@@ -5,14 +5,16 @@ namespace Wallabag\CoreBundle\Entity;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Mapping as ORM;
 use Hateoas\Configuration\Annotation as Hateoas;
-use JMS\Serializer\Annotation\Groups;
-use JMS\Serializer\Annotation\XmlRoot;
 use JMS\Serializer\Annotation\Exclude;
-use JMS\Serializer\Annotation\VirtualProperty;
+use JMS\Serializer\Annotation\Groups;
 use JMS\Serializer\Annotation\SerializedName;
+use JMS\Serializer\Annotation\VirtualProperty;
+use JMS\Serializer\Annotation\XmlRoot;
 use Symfony\Component\Validator\Constraints as Assert;
-use Wallabag\UserBundle\Entity\User;
 use Wallabag\AnnotationBundle\Entity\Annotation;
+use Wallabag\CoreBundle\Helper\EntityTimestampsTrait;
+use Wallabag\CoreBundle\Helper\UrlHasher;
+use Wallabag\UserBundle\Entity\User;
 
 /**
  * Entry.
@@ -24,7 +26,13 @@ use Wallabag\AnnotationBundle\Entity\Annotation;
  *     options={"collate"="utf8mb4_unicode_ci", "charset"="utf8mb4"},
  *     indexes={
  *         @ORM\Index(name="created_at", columns={"created_at"}),
- *         @ORM\Index(name="uid", columns={"uid"})
+ *         @ORM\Index(name="uid", columns={"uid"}),
+ *         @ORM\Index(name="hashed_url_user_id", columns={"user_id", "hashed_url"}, options={"lengths"={null, 40}}),
+ *         @ORM\Index(name="hashed_given_url_user_id", columns={"user_id", "hashed_given_url"}, options={"lengths"={null, 40}}),
+ *         @ORM\Index(name="user_language", columns={"language", "user_id"}),
+ *         @ORM\Index(name="user_archived", columns={"user_id", "is_archived", "archived_at"}),
+ *         @ORM\Index(name="user_created", columns={"user_id", "created_at"}),
+ *         @ORM\Index(name="user_starred", columns={"user_id", "is_starred", "starred_at"})
  *     }
  * )
  * @ORM\HasLifecycleCallbacks()
@@ -32,6 +40,8 @@ use Wallabag\AnnotationBundle\Entity\Annotation;
  */
 class Entry
 {
+    use EntityTimestampsTrait;
+
     /** @Serializer\XmlAttribute */
     /**
      * @var int
@@ -63,6 +73,8 @@ class Entry
     private $title;
 
     /**
+     * Define the url fetched by wallabag (the final url after potential redirections).
+     *
      * @var string
      *
      * @Assert\NotBlank()
@@ -71,6 +83,42 @@ class Entry
      * @Groups({"entries_for_user", "export_all"})
      */
     private $url;
+
+    /**
+     * @var string
+     *
+     * @ORM\Column(name="hashed_url", type="string", length=40, nullable=true)
+     */
+    private $hashedUrl;
+
+    /**
+     * From where user retrieved/found the url (an other article, a twitter, or the given_url if non are provided).
+     *
+     * @var string
+     *
+     * @ORM\Column(name="origin_url", type="text", nullable=true)
+     *
+     * @Groups({"entries_for_user", "export_all"})
+     */
+    private $originUrl;
+
+    /**
+     * Define the url entered by the user (without redirections).
+     *
+     * @var string
+     *
+     * @ORM\Column(name="given_url", type="text", nullable=true)
+     *
+     * @Groups({"entries_for_user", "export_all"})
+     */
+    private $givenUrl;
+
+    /**
+     * @var string
+     *
+     * @ORM\Column(name="hashed_given_url", type="string", length=40, nullable=true)
+     */
+    private $hashedGivenUrl;
 
     /**
      * @var bool
@@ -82,6 +130,15 @@ class Entry
      * @Groups({"entries_for_user", "export_all"})
      */
     private $isArchived = false;
+
+    /**
+     * @var \DateTime
+     *
+     * @ORM\Column(name="archived_at", type="datetime", nullable=true)
+     *
+     * @Groups({"entries_for_user", "export_all"})
+     */
+    private $archivedAt = null;
 
     /**
      * @var bool
@@ -122,6 +179,33 @@ class Entry
     private $updatedAt;
 
     /**
+     * @var \DateTime
+     *
+     * @ORM\Column(name="published_at", type="datetime", nullable=true)
+     *
+     * @Groups({"entries_for_user", "export_all"})
+     */
+    private $publishedAt;
+
+    /**
+     * @var array
+     *
+     * @ORM\Column(name="published_by", type="array", nullable=true)
+     *
+     * @Groups({"entries_for_user", "export_all"})
+     */
+    private $publishedBy;
+
+    /**
+     * @var \DateTime
+     *
+     * @ORM\Column(name="starred_at", type="datetime", nullable=true)
+     *
+     * @Groups({"entries_for_user", "export_all"})
+     */
+    private $starredAt = null;
+
+    /**
      * @ORM\OneToMany(targetEntity="Wallabag\AnnotationBundle\Entity\Annotation", mappedBy="entry", cascade={"persist", "remove"})
      * @ORM\JoinTable
      *
@@ -141,7 +225,7 @@ class Entry
     /**
      * @var string
      *
-     * @ORM\Column(name="language", type="text", nullable=true)
+     * @ORM\Column(name="language", type="string", length=20, nullable=true)
      *
      * @Groups({"entries_for_user", "export_all"})
      */
@@ -150,11 +234,11 @@ class Entry
     /**
      * @var int
      *
-     * @ORM\Column(name="reading_time", type="integer", nullable=true)
+     * @ORM\Column(name="reading_time", type="integer", nullable=false)
      *
      * @Groups({"entries_for_user", "export_all"})
      */
-    private $readingTime;
+    private $readingTime = 0;
 
     /**
      * @var string
@@ -175,15 +259,6 @@ class Entry
     private $previewPicture;
 
     /**
-     * @var bool
-     *
-     * @ORM\Column(name="is_public", type="boolean", nullable=true, options={"default" = false})
-     *
-     * @Groups({"export_all"})
-     */
-    private $isPublic;
-
-    /**
      * @var string
      *
      * @ORM\Column(name="http_status", type="string", length=3, nullable=true)
@@ -191,6 +266,15 @@ class Entry
      * @Groups({"entries_for_user", "export_all"})
      */
     private $httpStatus;
+
+    /**
+     * @var array
+     *
+     * @ORM\Column(name="headers", type="array", nullable=true)
+     *
+     * @Groups({"entries_for_user", "export_all"})
+     */
+    private $headers;
 
     /**
      * @Exclude
@@ -268,6 +352,7 @@ class Entry
     public function setUrl($url)
     {
         $this->url = $url;
+        $this->hashedUrl = UrlHasher::hashUrl($url);
 
         return $this;
     }
@@ -297,6 +382,44 @@ class Entry
     }
 
     /**
+     * update isArchived and archive_at fields.
+     *
+     * @param bool $isArchived
+     *
+     * @return Entry
+     */
+    public function updateArchived($isArchived = false)
+    {
+        $this->setArchived($isArchived);
+        $this->setArchivedAt(null);
+        if ($this->isArchived()) {
+            $this->setArchivedAt(new \DateTime());
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return \DateTime|null
+     */
+    public function getArchivedAt()
+    {
+        return $this->archivedAt;
+    }
+
+    /**
+     * @param \DateTime|null $archivedAt
+     *
+     * @return Entry
+     */
+    public function setArchivedAt($archivedAt = null)
+    {
+        $this->archivedAt = $archivedAt;
+
+        return $this;
+    }
+
+    /**
      * Get isArchived.
      *
      * @return bool
@@ -318,7 +441,7 @@ class Entry
 
     public function toggleArchive()
     {
-        $this->isArchived = $this->isArchived() ^ 1;
+        $this->updateArchived($this->isArchived() ^ 1);
 
         return $this;
     }
@@ -455,16 +578,41 @@ class Entry
     }
 
     /**
-     * @ORM\PrePersist
-     * @ORM\PreUpdate
+     * @return \DateTime|null
      */
-    public function timestamps()
+    public function getStarredAt()
     {
-        if (is_null($this->createdAt)) {
-            $this->createdAt = new \DateTime();
+        return $this->starredAt;
+    }
+
+    /**
+     * @param \DateTime|null $starredAt
+     *
+     * @return Entry
+     */
+    public function setStarredAt($starredAt = null)
+    {
+        $this->starredAt = $starredAt;
+
+        return $this;
+    }
+
+    /**
+     * update isStarred and starred_at fields.
+     *
+     * @param bool $isStarred
+     *
+     * @return Entry
+     */
+    public function updateStar($isStarred = false)
+    {
+        $this->setStarred($isStarred);
+        $this->setStarredAt(null);
+        if ($this->isStarred()) {
+            $this->setStarredAt(new \DateTime());
         }
 
-        $this->updatedAt = new \DateTime();
+        return $this;
     }
 
     /**
@@ -532,23 +680,7 @@ class Entry
     }
 
     /**
-     * @return bool
-     */
-    public function isPublic()
-    {
-        return $this->isPublic;
-    }
-
-    /**
-     * @param bool $isPublic
-     */
-    public function setIsPublic($isPublic)
-    {
-        $this->isPublic = $isPublic;
-    }
-
-    /**
-     * @return ArrayCollection<Tag>
+     * @return ArrayCollection
      */
     public function getTags()
     {
@@ -591,6 +723,11 @@ class Entry
         $tag->addEntry($this);
     }
 
+    /**
+     * Remove the given tag from the entry (if the tag is associated).
+     *
+     * @param Tag $tag
+     */
     public function removeTag(Tag $tag)
     {
         if (!$this->tags->contains($tag)) {
@@ -599,6 +736,17 @@ class Entry
 
         $this->tags->removeElement($tag);
         $tag->removeEntry($this);
+    }
+
+    /**
+     * Remove all assigned tags from the entry.
+     */
+    public function removeAllTags()
+    {
+        foreach ($this->tags as $tag) {
+            $this->tags->removeElement($tag);
+            $tag->removeEntry($this);
+        }
     }
 
     /**
@@ -650,7 +798,7 @@ class Entry
     }
 
     /**
-     * @return string
+     * @return string|null
      */
     public function getUid()
     {
@@ -683,7 +831,22 @@ class Entry
     }
 
     /**
-     * @return int
+     * Used in the entries filter so it's more explicit for the end user than the uid.
+     * Also used in the API.
+     *
+     * @VirtualProperty
+     * @SerializedName("is_public")
+     * @Groups({"entries_for_user"})
+     *
+     * @return bool
+     */
+    public function isPublic()
+    {
+        return null !== $this->uid;
+    }
+
+    /**
+     * @return string
      */
     public function getHttpStatus()
     {
@@ -691,13 +854,142 @@ class Entry
     }
 
     /**
-     * @param int $httpStatus
+     * @param string $httpStatus
      *
      * @return Entry
      */
     public function setHttpStatus($httpStatus)
     {
         $this->httpStatus = $httpStatus;
+
+        return $this;
+    }
+
+    /**
+     * @return \Datetime
+     */
+    public function getPublishedAt()
+    {
+        return $this->publishedAt;
+    }
+
+    /**
+     * @param \Datetime $publishedAt
+     *
+     * @return Entry
+     */
+    public function setPublishedAt(\Datetime $publishedAt)
+    {
+        $this->publishedAt = $publishedAt;
+
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getPublishedBy()
+    {
+        return $this->publishedBy;
+    }
+
+    /**
+     * @param array $publishedBy
+     *
+     * @return Entry
+     */
+    public function setPublishedBy($publishedBy)
+    {
+        $this->publishedBy = $publishedBy;
+
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getHeaders()
+    {
+        return $this->headers;
+    }
+
+    /**
+     * @param array $headers
+     *
+     * @return Entry
+     */
+    public function setHeaders($headers)
+    {
+        $this->headers = $headers;
+
+        return $this;
+    }
+
+    /**
+     * Set origin url.
+     *
+     * @param string $originUrl
+     *
+     * @return Entry
+     */
+    public function setOriginUrl($originUrl)
+    {
+        $this->originUrl = $originUrl;
+
+        return $this;
+    }
+
+    /**
+     * Get origin url.
+     *
+     * @return string
+     */
+    public function getOriginUrl()
+    {
+        return $this->originUrl;
+    }
+
+    /**
+     * Set given url.
+     *
+     * @param string $givenUrl
+     *
+     * @return Entry
+     */
+    public function setGivenUrl($givenUrl)
+    {
+        $this->givenUrl = $givenUrl;
+        $this->hashedGivenUrl = UrlHasher::hashUrl($givenUrl);
+
+        return $this;
+    }
+
+    /**
+     * Get given url.
+     *
+     * @return string
+     */
+    public function getGivenUrl()
+    {
+        return $this->givenUrl;
+    }
+
+    /**
+     * @return string
+     */
+    public function getHashedUrl()
+    {
+        return $this->hashedUrl;
+    }
+
+    /**
+     * @param mixed $hashedUrl
+     *
+     * @return Entry
+     */
+    public function setHashedUrl($hashedUrl)
+    {
+        $this->hashedUrl = $hashedUrl;
 
         return $this;
     }

@@ -5,7 +5,7 @@ security:
         forgot_password: "Mot de passe oublié ?"
         submit: "Se connecter"
         register: "Créer un compte"
-        username: "Nom d’utilisateur"
+        username: "Identifiant"
         password: "Mot de passe"
         cancel: "Annuler"
     resetting:
@@ -32,10 +32,13 @@ menu:
         save_link: "Sauvegarder un nouvel article"
         back_to_unread: "Retour aux articles non lus"
         users_management: "Gestion des utilisateurs"
+        site_credentials: 'Accès aux sites'
+        quickstart: "Pour bien débuter"
     top:
         add_new_entry: "Sauvegarder un nouvel article"
         search: "Rechercher"
         filter_entries: "Filtrer les articles"
+        random_entry: Aller à un article aléatoire de cette liste
         export: "Exporter"
     search_form:
         input_label: "Saisissez votre terme de recherche"
@@ -46,17 +49,18 @@ footer:
         social: "Social"
         powered_by: "propulsé par"
         about: "À propos"
-    stats: Depuis le %user_creation%, vous avez lu %nb_archives% articles. Ce qui fait %per_day% par jour !
+    stats: "Depuis le %user_creation%, vous avez lu %nb_archives% articles. Ce qui fait %per_day% par jour !"
 
 config:
     page_title: "Configuration"
     tab_menu:
         settings: "Paramètres"
-        rss: "RSS"
+        feed: "Flux"
         user_info: "Mon compte"
         password: "Mot de passe"
         rules: "Règles de tag automatiques"
         new_user: "Créer un compte"
+        reset: "Réinitialisation"
     form:
         save: "Enregistrer"
     form_settings:
@@ -64,53 +68,62 @@ config:
         items_per_page_label: "Nombre d’articles par page"
         language_label: "Langue"
         reading_speed:
-            label: "Vitesse de lecture"
+            label: "Vitesse de lecture (mots par minute)"
             help_message: "Vous pouvez utiliser un outil en ligne pour estimer votre vitesse de lecture :"
-            100_word: "Je lis environ 100 mots par minute"
-            200_word: "Je lis environ 200 mots par minute"
-            300_word: "Je lis environ 300 mots par minute"
-            400_word: "Je lis environ 400 mots par minute"
         action_mark_as_read:
-            label: 'Où souhaitez-vous être redirigé après avoir marqué un article comme lu ?'
-            redirect_homepage: "À la page d'accueil"
-            redirect_current_page: 'À la page courante'
-        pocket_consumer_key_label: Clé d’authentification Pocket pour importer les données
-        android_configuration: Configurez votre application Android
-        help_theme: "L'affichage de wallabag est personnalisable. C'est ici que vous choisissez le thème que vous préférez."
-        help_items_per_page: "Vous pouvez définir le nombre d'articles affichés sur chaque page."
+            label: "Que faire lorsqu'un article est supprimé, marqué comme lu ou marqué comme favori ?"
+            redirect_homepage: "Retourner à la page d’accueil"
+            redirect_current_page: "Rester sur la page actuelle"
+        pocket_consumer_key_label: "Clé d’authentification Pocket pour importer les données"
+        android_configuration: "Configurez votre application Android"
+        android_instruction: "Appuyez ici pour préremplir votre application Android"
+        help_theme: "L’affichage de wallabag est personnalisable. C’est ici que vous choisissez le thème que vous préférez."
+        help_items_per_page: "Vous pouvez définir le nombre d’articles affichés sur chaque page."
         help_reading_speed: "wallabag calcule une durée de lecture pour chaque article. Vous pouvez définir ici, grâce à cette liste déroulante, si vous lisez plus ou moins vite. wallabag recalculera la durée de lecture de chaque article."
-        help_language: "Vous pouvez définir la langue de l'interface de wallabag."
-        help_pocket_consumer_key: "Nécessaire pour l'import depuis Pocket. Vous pouvez le créer depuis votre compte Pocket."
-    form_rss:
-        description: "Les flux RSS fournis par wallabag vous permettent de lire vos articles sauvegardés dans votre lecteur de flux préféré. Pour pouvoir les utiliser, vous devez d’abord créer un jeton."
-        token_label: "Jeton RSS"
+        help_language: "Vous pouvez définir la langue de l’interface de wallabag."
+        help_pocket_consumer_key: "Nécessaire pour l’import depuis Pocket. Vous pouvez le créer depuis votre compte Pocket."
+    form_feed:
+        description: "Les flux Atom fournis par wallabag vous permettent de lire vos articles sauvegardés dans votre lecteur de flux préféré. Pour pouvoir les utiliser, vous devez d’abord créer un jeton."
+        token_label: "Jeton de flux"
         no_token: "Aucun jeton généré"
         token_create: "Créez votre jeton"
         token_reset: "Réinitialisez votre jeton"
-        rss_links: "Adresse de vos flux RSS"
-        rss_link:
-            unread: "non lus"
-            starred: "favoris"
-            archive: "lus"
-        rss_limit: "Nombre d’articles dans le flux"
+        token_revoke: 'Supprimer le jeton'
+        feed_links: "Adresses de vos flux"
+        feed_link:
+            unread: "Non lus"
+            starred: "Favoris"
+            archive: "Lus"
+            all: "Tous"
+        feed_limit: "Nombre d’articles dans le flux"
     form_user:
-        two_factor_description: "Activer l’authentification double-facteur veut dire que vous allez recevoir un code par courriel à chaque nouvelle connexion non approuvée."
+        two_factor_description: "Activer l’authentification double-facteur veut dire que vous allez recevoir un code par courriel OU que vous devriez utiliser une application de mot de passe à usage unique (comme Google Authenticator, Authy or FreeOTP) pour obtenir un code temporaire à chaque nouvelle connexion non approuvée. Vous ne pouvez pas choisir les deux options."
+        login_label: 'Identifiant'
         name_label: "Nom"
         email_label: "Adresse courriel"
-        twoFactorAuthentication_label: "Double authentification"
-        help_twoFactorAuthentication: "Si vous activez 2FA, à chaque tentative de connexion à wallabag, vous recevrez un code par email."
+        two_factor:
+            emailTwoFactor_label: 'En utlisant l’email (recevez un code par email)'
+            googleTwoFactor_label: 'En utilisant une application de mot de passe à usage unique (ouvrez l’app, comme Google Authenticator, Authy or FreeOTP, pour obtenir un mot de passe à usage unique)'
+            table_method: Méthode
+            table_state: État
+            table_action: Action
+            state_enabled: Activé
+            state_disabled: Désactivé
+            action_email: Utiliser l'email
+            action_app: Utiliser une app OTP
         delete:
-            title: Supprimer mon compte (attention danger !)
-            description: Si vous confirmez la suppression de votre compte, TOUS les articles, TOUS les tags, TOUTES les annotations et votre compte seront DÉFINITIVEMENT supprimé (c'est IRRÉVERSIBLE). Vous serez ensuite déconnecté.
-            confirm: Vous êtes vraiment sûr ? (C'EST IRRÉVERSIBLE)
-            button: 'Supprimer mon compte'
+            title: "Supprimer mon compte (attention danger !)"
+            description: "Si vous confirmez la suppression de votre compte, TOUS les articles, TOUS les tags, TOUTES les annotations et votre compte seront DÉFINITIVEMENT supprimé (c’est IRRÉVERSIBLE). Vous serez ensuite déconnecté."
+            confirm: "Vous êtes vraiment sûr ? (C’EST IRRÉVERSIBLE)"
+            button: "Supprimer mon compte"
     reset:
-        title: Réinitialisation (attention danger !)
-        description: En cliquant sur les boutons ci-dessous vous avez la possibilité de supprimer certaines informations de votre compte. Attention, ces actions sont IRRÉVERSIBLES !
-        annotations: Supprimer TOUTES les annotations
-        tags: Supprimer TOUS les tags
-        entries: Supprimer TOUS les articles
-        confirm: Êtes-vous vraiment vraiment sûr ? (C'EST IRRÉVERSIBLE)
+        title: "Réinitialisation (attention danger !)"
+        description: "En cliquant sur les boutons ci-dessous vous avez la possibilité de supprimer certaines informations de votre compte. Attention, ces actions sont IRRÉVERSIBLES !"
+        annotations: "Supprimer TOUTES les annotations"
+        tags: "Supprimer TOUS les tags"
+        entries: "Supprimer TOUS les articles"
+        archived: "Supprimer TOUS les articles archivés"
+        confirm: "Êtes-vous vraiment vraiment sûr ? (C’EST IRRÉVERSIBLE)"
     form_password:
         description: "Vous pouvez changer ici votre mot de passe. Le mot de passe doit contenir au moins 8 caractères."
         old_password_label: "Mot de passe actuel"
@@ -123,6 +136,15 @@ config:
         edit_rule_label: "éditer"
         rule_label: "Règle"
         tags_label: "Tags"
+        card:
+            new_tagging_rule: Créer une règle
+            import_tagging_rules: Importer des règles
+            import_tagging_rules_detail: Vous devez sélectionné un fichier JSON que vous avez précédemment exporté.
+            export_tagging_rules: Exporter les règles
+            export_tagging_rules_detail: Un fichier JSON sera téléchargé et vous pourrez l'utiliser pour ré-importer les règles ou comme sauvegarde.
+        file_label: Fichier JSON
+        import_submit: Importer
+        export: Export
         faq:
             title: "FAQ"
             tagging_rules_definition_title: "Que signifient les règles de tag automatiques ?"
@@ -154,16 +176,28 @@ config:
                 or: "Une règle OU l’autre"
                 and: "Une règle ET l’autre"
                 matches: "Teste si un <i>sujet</i> correspond à une <i>recherche</i> (non sensible à la casse).<br />Exemple : <code>title matches \"football\"</code>"
+                notmatches: "Teste si un <i>sujet</i> ne correspond pas à une <i>recherche</i> (non sensible à la casse).<br />Exemple : <code>title notmatches \"football\"</code>"
+    otp:
+        page_title: Authentification double-facteur
+        app:
+            two_factor_code_description_1: Vous venez d’activer l’authentification double-facteur, ouvrez votre application OTP pour configurer la génération du mot de passe à usage unique. Ces informations disparaîtront après un rechargement de la page.
+            two_factor_code_description_2: 'Vous pouvez scanner le QR code avec votre application :'
+            two_factor_code_description_3: 'N’oubliez pas de sauvegarder ces codes de secours dans un endroit sûr, vous pourrez les utiliser si vous ne pouvez plus accéder à votre application OTP :'
+            two_factor_code_description_4: 'Testez un code généré par votre application OTP :'
+            cancel: Annuler
+            enable: Activer
 
 entry:
+    default_title: "Titre de l’article"
     page_titles:
         unread: "Articles non lus"
         starred: "Articles favoris"
         archived: "Articles lus"
         filtered: "Articles filtrés"
         filtered_tags: "Articles filtrés par tags :"
-        filtered_search: 'Articles filtrés par recherche :'
+        filtered_search: "Articles filtrés par recherche :"
         untagged: "Article sans tag"
+        all: "Tous les articles"
     list:
         number_on_the_page: "{0} Il n’y a pas d’article.|{1} Il y a un article.|]1,Inf[ Il y a %count% articles."
         reading_time: "durée de lecture"
@@ -185,8 +219,10 @@ entry:
         unread_label: "Non lus"
         preview_picture_label: "A une photo"
         preview_picture_help: "Photo"
+        is_public_label: 'A un lien public'
+        is_public_help: 'Lien public'
         language_label: "Langue"
-        http_status_label: 'Statut HTTP'
+        http_status_label: "Statut HTTP"
         reading_time:
             label: "Durée de lecture en minutes"
             from: "de"
@@ -214,7 +250,7 @@ entry:
             share_email_label: "Courriel"
             public_link: "Lien public"
             delete_public_link: "Supprimer le lien public"
-            download: "Télécharger"
+            export: "Exporter"
             print: "Imprimer"
             problem:
                 label: "Un problème ?"
@@ -223,6 +259,9 @@ entry:
         original_article: "original"
         annotations_on_the_entry: "{0} Aucune annotation|{1} Une annotation|]1,Inf[ %count% annotations"
         created_at: "Date de création"
+        published_at: "Date de publication"
+        published_by: "Publié par"
+        provided_by: "Fourni par"
     new:
         page_title: "Sauvegarder un nouvel article"
         placeholder: "http://website.com"
@@ -234,10 +273,18 @@ entry:
         page_title: "Éditer un article"
         title_label: "Titre"
         url_label: "Adresse"
-        is_public_label: "Public"
+        origin_url_label: "Adresse d'origine (d'où vous avez trouvé cet article)"
         save_label: "Enregistrer"
     public:
-        shared_by_wallabag: "Cet article a été partagé par <a href=\"%wallabag_instance%\">wallabag</a>"
+        shared_by_wallabag: "Cet article a été partagé par %username% avec <a href=\"%wallabag_instance%\">wallabag</a>"
+    confirm:
+        delete: "Voulez-vous vraiment supprimer cet article ?"
+        delete_tag: "Voulez-vous vraiment supprimer ce tag de cet article ?"
+    metadata:
+        reading_time: "Durée de lecture estimée"
+        reading_time_minutes_short: "%readingTime% min"
+        address: "Adresse"
+        added_on: "Ajouté le"
 
 about:
     page_title: "À propos"
@@ -275,7 +322,7 @@ howto:
     tab_menu:
         add_link: "Ajouter un lien"
         shortcuts: "Utiliser les raccourcis"
-    page_description: "Il y a plusieurs façon d’enregistrer un article :"
+    page_description: "Il y a plusieurs façons d’enregistrer un article :"
     top_menu:
         browser_addons: "Extensions de navigateur"
         mobile_apps: "Applications smartphone"
@@ -295,32 +342,32 @@ howto:
     bookmarklet:
         description: "Glissez et déposez ce lien dans votre barre de favoris :"
     shortcuts:
-        page_description: Voici les raccourcis disponibles dans wallabag.
-        shortcut: Raccourci
-        action: Action
-        all_pages_title: Raccourcis disponibles dans toutes les pages
-        go_unread: Afficher les articles non lus
-        go_starred: Afficher les articles favoris
-        go_archive:  Afficher les articles lus
-        go_all: Afficher tous les articles
-        go_tags: Afficher les tags
-        go_config: Aller à la configuration
-        go_import: Aller aux imports
-        go_developers: Aller à la section Développeurs
-        go_howto: Afficher l'aide (cette page !)
-        go_logout: Se déconnecter
-        list_title: Raccourcis disponibles dans les pages de liste
-        search: Afficher le formulaire de recherche
-        article_title: Raccourcis disponibles quand on affiche un article
-        open_original: Ouvrir l'URL originale de l'article
-        toggle_favorite: Changer le statut Favori de l'article
-        toggle_archive: Changer le status Lu de l'article
-        delete: Supprimer l'article
-        material_title: Raccourcis disponibles avec le thème Material uniquement
-        add_link: Ajouter un nouvel article
-        hide_form: Masquer le formulaire courant (recherche ou nouvel article)
-        arrows_navigation: Naviguer à travers les articles
-        open_article: Afficher l'article sélectionné
+        page_description: "Voici les raccourcis disponibles dans wallabag."
+        shortcut: "Raccourci"
+        action: "Action"
+        all_pages_title: "Raccourcis disponibles dans toutes les pages"
+        go_unread: "Afficher les articles non lus"
+        go_starred: "Afficher les articles favoris"
+        go_archive:  "Afficher les articles lus"
+        go_all: "Afficher tous les articles"
+        go_tags: "Afficher les tags"
+        go_config: "Aller à la configuration"
+        go_import: "Aller aux imports"
+        go_developers: "Aller à la section Développeurs"
+        go_howto: "Afficher l’aide (cette page !)"
+        go_logout: "Se déconnecter"
+        list_title: "Raccourcis disponibles dans les pages de liste"
+        search: "Afficher le formulaire de recherche"
+        article_title: "Raccourcis disponibles quand on affiche un article"
+        open_original: "Ouvrir l’URL originale de l’article"
+        toggle_favorite: "Changer le statut Favori de l’article"
+        toggle_archive: "Changer le status Lu de l’article"
+        delete: "Supprimer l’article"
+        material_title: "Raccourcis disponibles avec le thème Material uniquement"
+        add_link: "Ajouter un nouvel article"
+        hide_form: "Masquer le formulaire courant (recherche ou nouvel article)"
+        arrows_navigation: "Naviguer à travers les articles"
+        open_article: "Afficher l’article sélectionné"
 
 quickstart:
     page_title: "Pour bien débuter"
@@ -333,7 +380,7 @@ quickstart:
         title: "Configurez l’application"
         description: "Pour voir une application qui vous correspond, allez voir du côté de la configuration de wallabag."
         language: "Changez la langue et le design de l’application"
-        rss: "Activez les flux RSS"
+        feed: "Activez les flux Atom"
         tagging_rules: "Écrivez des règles pour classer automatiquement vos articles"
     admin:
         title: "Administration"
@@ -381,9 +428,16 @@ tag:
     list:
         number_on_the_page: "{0} Il n’y a pas de tag.|{1} Il y a un tag.|]1,Inf[ Il y a %count% tags."
         see_untagged_entries: "Voir les articles sans tag"
+        no_untagged_entries: 'Aucun article sans tag.'
     new:
-        add: 'Ajouter'
-        placeholder: 'Vous pouvez ajouter plusieurs tags, séparés par une virgule.'
+        add: "Ajouter"
+        placeholder: "Vous pouvez ajouter plusieurs tags, séparés par une virgule."
+    rename:
+        placeholder: 'Vous pouvez changer le nom de votre tag.'
+
+export:
+    footer_template: '<div style="text-align:center;"><p>Généré par wallabag with %method%</p><p>Merci d''ouvrir <a href="https://github.com/wallabag/wallabag/issues">un ticket</a> si vous rencontrez des soucis d''affichage avec ce document sur votre support.</p></div>'
+    unknown: 'Inconnu'
 
 import:
     page_title: "Importer"
@@ -417,7 +471,7 @@ import:
         how_to: "Choisissez le fichier de votre export Readability et cliquez sur le bouton ci-dessous pour l’importer."
     worker:
         enabled: "Les imports sont asynchrones. Une fois l’import commencé un worker externe traitera les messages un par un. Le service activé est :"
-        download_images_warning: "Vous avez configuré le téléchagement des images pour vos articles. Combiné à l'import classique, cette opération peut être très très longue (voire échouer). Nous vous conseillons <strong>vivement</strong> d'activer les imports asynchrones."
+        download_images_warning: "Vous avez configuré le téléchagement des images pour vos articles. Combiné à l’import classique, cette opération peut être très très longue (voire échouer). Nous vous conseillons <strong>vivement</strong> d’activer les imports asynchrones."
     firefox:
         page_title: "Import > Firefox"
         description: "Cet outil va vous permettre d’importer tous vos marques-pages de Firefox. Ouvrez le panneau des marques-pages (Ctrl+Maj+O), puis dans « Importation et sauvegarde », choisissez « Sauvegarde… ». Vous allez récupérer un fichier .json. </p>"
@@ -464,6 +518,7 @@ developer:
             redirect_uris_label: "Adresses de redirection (optionnel)"
             save_label: "Créer un nouveau client"
         action_back: "Retour"
+        copy_to_clipboard: Copier
     client_parameter:
         page_title: "Gestion des clients API > Les paramètres de votre client"
         page_description: "Voilà les paramètres de votre client"
@@ -486,18 +541,18 @@ developer:
         back: "Retour"
 
 user:
-    page_title: Gestion des utilisateurs
-    new_user: Créer un nouvel utilisateur
-    edit_user: Éditer un utilisateur existant
-    description: Ici vous pouvez gérer vos utilisateurs (création, mise à jour et suppression)
+    page_title: "Gestion des utilisateurs"
+    new_user: "Créer un nouvel utilisateur"
+    edit_user: "Éditer un utilisateur existant"
+    description: "Ici vous pouvez gérer vos utilisateurs (création, mise à jour et suppression)"
     list:
-        actions: Actions
-        edit_action: Éditer
-        yes: Oui
-        no: Non
-        create_new_one: Créer un nouvel utilisateur
+        actions: "Actions"
+        edit_action: "Éditer"
+        yes: "Oui"
+        no: "Non"
+        create_new_one: "Créer un nouvel utilisateur"
     form:
-        username_label: "Nom d’utilisateur"
+        username_label: "Identifiant (ne peut être changé)"
         name_label: "Nom"
         password_label: "Mot de passe"
         repeat_new_password_label: "Confirmez votre nouveau mot de passe"
@@ -506,13 +561,37 @@ user:
         enabled_label: "Activé"
         last_login_label: "Dernière connexion"
         twofactor_label: "Double authentification"
+        twofactor_email_label: Double authentification par email
+        twofactor_google_label: Double authentification par OTP app
         save: "Sauvegarder"
         delete: "Supprimer"
-        delete_confirm: "Voulez-vous vraiment ?"
+        delete_confirm: "Êtes-vous sûr ?"
+        back_to_list: "Revenir à la liste"
+    search:
+        placeholder: "Filtrer par identifiant ou email"
+
+site_credential:
+    page_title: Gestion des accès aux sites
+    new_site_credential: Créer un accès à un site
+    edit_site_credential: Éditer l'accès d'un site
+    description: "Ici vous pouvez gérer les accès aux différents sites. Ces accès permettent de récupérer des contenus sur des sites qui requièrent une authentification ou un paywall"
+    list:
+        actions: Actions
+        edit_action: Éditer
+        yes: Oui
+        no: Non
+        create_new_one: Créer un nouvel accès à un site
+    form:
+        username_label: 'Identifiant'
+        host_label: 'Domaine (subdomain.example.org, .example.org, etc.)'
+        password_label: 'Mot de passe'
+        save: "Sauvegarder"
+        delete: "Supprimer"
+        delete_confirm: "Êtes-vous sûr ?"
         back_to_list: "Revenir à la liste"
 
 error:
-    page_title: Une erreur est survenue
+    page_title: "Une erreur est survenue"
 
 flashes:
     config:
@@ -521,13 +600,18 @@ flashes:
             password_updated: "Votre mot de passe a bien été mis à jour"
             password_not_updated_demo: "En démo, vous ne pouvez pas changer le mot de passe de cet utilisateur."
             user_updated: "Vos informations personnelles ont bien été mises à jour"
-            rss_updated: "La configuration des flux RSS a bien été mise à jour"
+            feed_updated: "La configuration des flux a bien été mise à jour"
             tagging_rules_updated: "Règles mises à jour"
             tagging_rules_deleted: "Règle supprimée"
-            rss_token_updated: "Jeton RSS mis à jour"
-            annotations_reset: Annotations supprimées
-            tags_reset: Tags supprimés
-            entries_reset: Articles supprimés
+            feed_token_updated: "Jeton des flux mis à jour"
+            feed_token_revoked: 'Jeton des flux supprimé'
+            annotations_reset: "Annotations supprimées"
+            tags_reset: "Tags supprimés"
+            entries_reset: "Articles supprimés"
+            archived_reset: "Articles archivés supprimés"
+            otp_enabled: "Authentification à double-facteur activée"
+            tagging_rules_imported: Règles bien importées
+            tagging_rules_not_imported: Impossible d'importer les règles
     entry:
         notice:
             entry_already_saved: "Article déjà sauvegardé le %date%"
@@ -541,9 +625,11 @@ flashes:
             entry_starred: "Article ajouté dans les favoris"
             entry_unstarred: "Article retiré des favoris"
             entry_deleted: "Article supprimé"
+            no_random_entry: "Aucun article correspond aux critères n'a été trouvé"
     tag:
         notice:
             tag_added: "Tag ajouté"
+            tag_renamed: "Tag renommé"
     import:
         notice:
             failed: "L’import a échoué, veuillez ré-essayer"
@@ -562,3 +648,8 @@ flashes:
             added: 'Utilisateur "%username%" ajouté'
             updated: 'Utilisateur "%username%" mis à jour'
             deleted: 'Utilisateur "%username%" supprimé'
+    site_credential:
+        notice:
+            added: 'Accès au site "%host%" ajouté'
+            updated: 'Accès au site "%host%" mis à jour'
+            deleted: 'Accès au site "%host%" supprimé'

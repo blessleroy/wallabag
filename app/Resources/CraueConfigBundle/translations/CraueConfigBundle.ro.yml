@@ -12,14 +12,16 @@ export_xml: Permite exportare XML
 # import_with_rabbitmq: Enable RabbitMQ to import data asynchronously
 # import_with_redis: Enable Redis to import data asynchronously
 shaarli_url: Shaarli URL, dacă serviciul este permis
+scuttle_url: Scuttle URL, dacă serviciul este permis
+unmark_url: Unmark URL, dacă serviciul este permis
 share_diaspora: Permite share către Diaspora
 share_mail: Permite share prin email
 share_shaarli: Permite share către Shaarli
+share_scuttle: Permite share către Scuttle
 share_twitter: Permite share către Twitter
 share_unmark: Permite share către Unmark.it
 show_printlink: Afișează un link pentru a printa content-ul
 wallabag_support_url: URL-ul de suport pentru wallabag
-wallabag_url: URL-ul instanței tale wallabag
 entry: "alticol"
 export: "exportă"
 import: "importă"
@@ -33,3 +35,6 @@ modify_settings: "aplică"
 # share_public: Allow public url for entries
 # download_images_enabled: Download images locally
 # restricted_access: Enable authentication for websites with paywall
+# api_user_registration: Enable user to be registered using the API
+# store_article_headers: Enable if wallabag stores HTTP headers for each article
+# shaarli_share_origin_url: Enable sharing origin url to Shaarli, if the service is enabled

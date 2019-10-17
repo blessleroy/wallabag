@@ -3,6 +3,8 @@
 namespace Wallabag\CoreBundle\Repository;
 
 use Doctrine\ORM\EntityRepository;
+use Doctrine\ORM\QueryBuilder;
+use Wallabag\CoreBundle\Entity\Tag;
 
 class TagRepository extends EntityRepository
 {
@@ -29,7 +31,7 @@ class TagRepository extends EntityRepository
             $query->setResultCacheLifetime($cacheLifeTime);
         }
 
-        return count($query->getArrayResult());
+        return \count($query->getArrayResult());
     }
 
     /**
@@ -44,12 +46,41 @@ class TagRepository extends EntityRepository
      */
     public function findAllTags($userId)
     {
-        $ids = $this->createQueryBuilder('t')
+        $ids = $this->getQueryBuilderByUser($userId)
             ->select('t.id')
-            ->leftJoin('t.entries', 'e')
-            ->where('e.user = :userId')->setParameter('userId', $userId)
-            ->groupBy('t.id')
-            ->orderBy('t.slug')
+            ->getQuery()
+            ->getArrayResult();
+
+        $tags = [];
+        foreach ($ids as $id) {
+            $tags[] = $this->find($id);
+        }
+
+        return $tags;
+    }
+
+    /**
+     * Find all tags (flat) per user with nb entries.
+     *
+     * @param int $userId
+     *
+     * @return array
+     */
+    public function findAllFlatTagsWithNbEntries($userId)
+    {
+        return $this->getQueryBuilderByUser($userId)
+            ->select('t.id, t.label, t.slug, count(e.id) as nbEntries')
+            ->distinct(true)
+            ->getQuery()
+            ->getArrayResult();
+    }
+
+    public function findByLabelsAndUser($labels, $userId)
+    {
+        $qb = $this->getQueryBuilderByUser($userId)
+            ->select('t.id');
+
+        $ids = $qb->andWhere($qb->expr()->in('t.label', $labels))
             ->getQuery()
             ->getArrayResult();
 
@@ -75,5 +106,37 @@ class TagRepository extends EntityRepository
             ->setMaxResults(1)
             ->getQuery()
             ->getSingleResult();
+    }
+
+    public function findForArchivedArticlesByUser($userId)
+    {
+        $ids = $this->getQueryBuilderByUser($userId)
+            ->select('t.id')
+            ->andWhere('e.isArchived = true')
+            ->getQuery()
+            ->getArrayResult();
+
+        $tags = [];
+        foreach ($ids as $id) {
+            $tags[] = $this->find($id);
+        }
+
+        return $tags;
+    }
+
+    /**
+     * Retrieve a sorted list of tags used by a user.
+     *
+     * @param int $userId
+     *
+     * @return QueryBuilder
+     */
+    private function getQueryBuilderByUser($userId)
+    {
+        return $this->createQueryBuilder('t')
+            ->leftJoin('t.entries', 'e')
+            ->where('e.user = :userId')->setParameter('userId', $userId)
+            ->groupBy('t.id')
+            ->orderBy('t.slug');
     }
 }

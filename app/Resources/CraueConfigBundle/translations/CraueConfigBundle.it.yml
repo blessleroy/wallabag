@@ -12,14 +12,16 @@ export_xml: Abilita esportazione XML
 # import_with_rabbitmq: Enable RabbitMQ to import data asynchronously
 # import_with_redis: Enable Redis to import data asynchronously
 shaarli_url: Shaarli URL, se il servizio è abilitato
+scuttle_url: Scuttle URL, se il servizio è abilitato
+unmark_url: Unmark URL, se il servizio è abilitato
 share_diaspora: Abilita la condivisione con Diaspora
 share_mail: Abilita la condivisione per email
 share_shaarli: Abilita la condivisione con Shaarli
+share_scuttle: Abilita la condivisione con Scuttle
 share_twitter: Abilita la condivisione con Twitter
 share_unmark: Abilita la condivisione con Unmark.it
 show_printlink: Mostra un collegamento per stampare il contenuto
 wallabag_support_url: URL di supporto per wallabag
-wallabag_url: URL della *tua* installazione di wallabag
 entry: "contenuto"
 export: "esporta"
 import: "importa"
@@ -33,3 +35,6 @@ demo_mode_username: "Utente Demo"
 # share_public: Allow public url for entries
 # download_images_enabled: Download images locally
 # restricted_access: Enable authentication for websites with paywall
+api_user_registration: Abilita la registrazione dell'utente attraverso l'API
+# store_article_headers: Enable if wallabag stores HTTP headers for each article
+# shaarli_share_origin_url: Enable sharing origin url to Shaarli, if the service is enabled

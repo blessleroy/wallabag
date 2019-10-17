@@ -1,6 +1,7 @@
 imports:
     - { resource: config_dev.yml }
     - { resource: parameters_test.yml }
+    - { resource: services_test.yml }
 
 framework:
     test: ~
@@ -29,7 +30,8 @@ doctrine:
         user: "%test_database_user%"
         password: "%test_database_password%"
         charset: "%test_database_charset%"
-        path: "%test_database_path%"
+        path: "%env(TEST_DATABASE_PATH)%"
+
     orm:
         metadata_cache_driver:
             type: service

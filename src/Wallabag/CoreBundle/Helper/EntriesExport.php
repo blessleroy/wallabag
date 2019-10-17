@@ -2,12 +2,14 @@
 
 namespace Wallabag\CoreBundle\Helper;
 
-use JMS\Serializer;
+use Html2Text\Html2Text;
 use JMS\Serializer\SerializationContext;
 use JMS\Serializer\SerializerBuilder;
 use PHPePub\Core\EPub;
 use PHPePub\Core\Structure\OPF\DublinCore;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Translation\TranslatorInterface;
+use Wallabag\CoreBundle\Entity\Entry;
 
 /**
  * This class doesn't have unit test BUT it's fully covered by a functional test with ExportControllerTest.
@@ -16,21 +18,20 @@ class EntriesExport
 {
     private $wallabagUrl;
     private $logoPath;
+    private $translator;
     private $title = '';
     private $entries = [];
-    private $authors = ['wallabag'];
+    private $author = 'wallabag';
     private $language = '';
-    private $footerTemplate = '<div style="text-align:center;">
-        <p>Produced by wallabag with %EXPORT_METHOD%</p>
-        <p>Please open <a href="https://github.com/wallabag/wallabag/issues">an issue</a> if you have trouble with the display of this E-Book on your device.</p>
-        </div>';
 
     /**
-     * @param string $wallabagUrl Wallabag instance url
-     * @param string $logoPath    Path to the logo FROM THE BUNDLE SCOPE
+     * @param TranslatorInterface $translator  Translator service
+     * @param string              $wallabagUrl Wallabag instance url
+     * @param string              $logoPath    Path to the logo FROM THE BUNDLE SCOPE
      */
-    public function __construct($wallabagUrl, $logoPath)
+    public function __construct(TranslatorInterface $translator, $wallabagUrl, $logoPath)
     {
+        $this->translator = $translator;
         $this->wallabagUrl = $wallabagUrl;
         $this->logoPath = $logoPath;
     }
@@ -44,7 +45,7 @@ class EntriesExport
      */
     public function setEntries($entries)
     {
-        if (!is_array($entries)) {
+        if (!\is_array($entries)) {
             $this->language = $entries->getLanguage();
             $entries = [$entries];
         }
@@ -63,10 +64,37 @@ class EntriesExport
      */
     public function updateTitle($method)
     {
-        $this->title = $method.' articles';
+        $this->title = $method . ' articles';
 
         if ('entry' === $method) {
             $this->title = $this->entries[0]->getTitle();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Sets the author for one entry or category.
+     *
+     * The publishers are used, or the domain name if empty.
+     *
+     * @param string $method Method to get articles
+     *
+     * @return EntriesExport
+     */
+    public function updateAuthor($method)
+    {
+        if ('entry' !== $method) {
+            $this->author = 'Various authors';
+
+            return $this;
+        }
+
+        $this->author = $this->entries[0]->getDomainName();
+
+        $publishedBy = $this->entries[0]->getPublishedBy();
+        if (!empty($publishedBy)) {
+            $this->author = implode(', ', $publishedBy);
         }
 
         return $this;
@@ -81,7 +109,7 @@ class EntriesExport
      */
     public function exportAs($format)
     {
-        $functionName = 'produce'.ucfirst($format);
+        $functionName = 'produce' . ucfirst($format);
         if (method_exists($this, $functionName)) {
             return $this->$functionName();
         }
@@ -106,12 +134,12 @@ class EntriesExport
          */
         $content_start =
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-            ."<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\">\n"
-            .'<head>'
-            ."<meta http-equiv=\"Default-Style\" content=\"text/html; charset=utf-8\" />\n"
-            ."<title>wallabag articles book</title>\n"
-            ."</head>\n"
-            ."<body>\n";
+            . "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\">\n"
+            . '<head>'
+            . "<meta http-equiv=\"Default-Style\" content=\"text/html; charset=utf-8\" />\n"
+            . "<title>wallabag articles book</title>\n"
+            . "</head>\n"
+            . "<body>\n";
 
         $bookEnd = "</body>\n</html>\n";
 
@@ -122,15 +150,11 @@ class EntriesExport
          */
 
         $book->setTitle($this->title);
-        // Could also be the ISBN number, prefered for published books, or a UUID.
-        $book->setIdentifier($this->title, EPub::IDENTIFIER_URI);
         // Not needed, but included for the example, Language is mandatory, but EPub defaults to "en". Use RFC3066 Language codes, such as "en", "da", "fr" etc.
         $book->setLanguage($this->language);
         $book->setDescription('Some articles saved on my wallabag');
 
-        foreach ($this->authors as $author) {
-            $book->setAuthor($author, $author);
-        }
+        $book->setAuthor($this->author, $this->author);
 
         // I hope this is a non existant address :)
         $book->setPublisher('wallabag', 'wallabag');
@@ -141,16 +165,9 @@ class EntriesExport
         $book->addDublinCoreMetadata(DublinCore::CONTRIBUTOR, 'PHP');
         $book->addDublinCoreMetadata(DublinCore::CONTRIBUTOR, 'wallabag');
 
-        /*
-         * Front page
-         */
-        if (file_exists($this->logoPath)) {
-            $book->setCoverImage('Cover.png', file_get_contents($this->logoPath), 'image/png');
-        }
-
-        $book->addChapter('Notices', 'Cover2.html', $content_start.$this->getExportInformation('PHPePub').$bookEnd);
-
-        $book->buildTOC();
+        $entryIds = [];
+        $entryCount = \count($this->entries);
+        $i = 0;
 
         /*
          * Adding actual entries
@@ -158,17 +175,48 @@ class EntriesExport
 
         // set tags as subjects
         foreach ($this->entries as $entry) {
+            ++$i;
+
+            /*
+             * Front page
+             * Set if there's only one entry in the given set
+             */
+            if (1 === $entryCount && null !== $entry->getPreviewPicture()) {
+                $book->setCoverImage($entry->getPreviewPicture());
+            }
+
             foreach ($entry->getTags() as $tag) {
                 $book->setSubject($tag->getLabel());
             }
+            $filename = sha1(sprintf('%s:%s', $entry->getUrl(), $entry->getTitle()));
 
-            // the reader in Kobo Devices doesn't likes special caracters
-            // in filenames, we limit to A-z/0-9
-            $filename = preg_replace('/[^A-Za-z0-9\-]/', '', $entry->getTitle());
+            $publishedBy = $entry->getPublishedBy();
+            $authors = $this->translator->trans('export.unknown');
+            if (!empty($publishedBy)) {
+                $authors = implode(',', $publishedBy);
+            }
 
-            $chapter = $content_start.$entry->getContent().$bookEnd;
-            $book->addChapter($entry->getTitle(), htmlspecialchars($filename).'.html', $chapter, true, EPub::EXTERNAL_REF_ADD);
+            $titlepage = $content_start .
+                '<h1>' . $entry->getTitle() . '</h1>' .
+                '<dl>' .
+                '<dt>' . $this->translator->trans('entry.view.published_by') . '</dt><dd>' . $authors . '</dd>' .
+                '<dt>' . $this->translator->trans('entry.metadata.reading_time') . '</dt><dd>' . $this->translator->trans('entry.metadata.reading_time_minutes_short', ['%readingTime%' => $entry->getReadingTime()]) . '</dd>' .
+                '<dt>' . $this->translator->trans('entry.metadata.added_on') . '</dt><dd>' . $entry->getCreatedAt()->format('Y-m-d') . '</dd>' .
+                '<dt>' . $this->translator->trans('entry.metadata.address') . '</dt><dd><a href="' . $entry->getUrl() . '">' . $entry->getUrl() . '</a></dd>' .
+                '</dl>' .
+                $bookEnd;
+            $book->addChapter("Entry {$i} of {$entryCount}", "{$filename}_cover.html", $titlepage, true, EPub::EXTERNAL_REF_ADD);
+            $chapter = $content_start . $entry->getContent() . $bookEnd;
+
+            $entryIds[] = $entry->getId();
+            $book->addChapter($entry->getTitle(), "{$filename}.html", $chapter, true, EPub::EXTERNAL_REF_ADD);
         }
+
+        $book->addChapter('Notices', 'Cover2.html', $content_start . $this->getExportInformation('PHPePub') . $bookEnd);
+
+        // Could also be the ISBN number, prefered for published books, or a UUID.
+        $hash = sha1(sprintf('%s:%s', $this->wallabagUrl, implode(',', $entryIds)));
+        $book->setIdentifier(sprintf('urn:wallabag:%s', $hash), EPub::IDENTIFIER_URI);
 
         return Response::create(
             $book->getBook(),
@@ -176,7 +224,7 @@ class EntriesExport
             [
                 'Content-Description' => 'File Transfer',
                 'Content-type' => 'application/epub+zip',
-                'Content-Disposition' => 'attachment; filename="'.$this->title.'.epub"',
+                'Content-Disposition' => 'attachment; filename="' . $this->getSanitizedFilename() . '.epub"',
                 'Content-Transfer-Encoding' => 'binary',
             ]
         );
@@ -196,7 +244,7 @@ class EntriesExport
          * Book metadata
          */
         $content->set('title', $this->title);
-        $content->set('author', implode($this->authors));
+        $content->set('author', $this->author);
         $content->set('subject', $this->title);
 
         /*
@@ -218,9 +266,6 @@ class EntriesExport
         }
         $mobi->setContentProvider($content);
 
-        // the browser inside Kindle Devices doesn't likes special caracters either, we limit to A-z/0-9
-        $this->title = preg_replace('/[^A-Za-z0-9\-]/', '', $this->title);
-
         return Response::create(
             $mobi->toString(),
             200,
@@ -228,7 +273,7 @@ class EntriesExport
                 'Accept-Ranges' => 'bytes',
                 'Content-Description' => 'File Transfer',
                 'Content-type' => 'application/x-mobipocket-ebook',
-                'Content-Disposition' => 'attachment; filename="'.$this->title.'.mobi"',
+                'Content-Disposition' => 'attachment; filename="' . $this->getSanitizedFilename() . '.mobi"',
                 'Content-Transfer-Encoding' => 'binary',
             ]
         );
@@ -247,18 +292,10 @@ class EntriesExport
          * Book metadata
          */
         $pdf->SetCreator(PDF_CREATOR);
-        $pdf->SetAuthor('wallabag');
+        $pdf->SetAuthor($this->author);
         $pdf->SetTitle($this->title);
         $pdf->SetSubject('Articles via wallabag');
         $pdf->SetKeywords('wallabag');
-
-        /*
-         * Front page
-         */
-        $pdf->AddPage();
-        $intro = '<h1>'.$this->title.'</h1>'.$this->getExportInformation('tcpdf');
-
-        $pdf->writeHTMLCell(0, 0, '', '', $intro, 0, 1, 0, true, '', true);
 
         /*
          * Adding actual entries
@@ -268,12 +305,36 @@ class EntriesExport
                 $pdf->SetKeywords($tag->getLabel());
             }
 
+            $publishedBy = $entry->getPublishedBy();
+            $authors = $this->translator->trans('export.unknown');
+            if (!empty($publishedBy)) {
+                $authors = implode(',', $publishedBy);
+            }
+
+            $pdf->addPage();
+            $html = '<h1>' . $entry->getTitle() . '</h1>' .
+                '<dl>' .
+                '<dt>' . $this->translator->trans('entry.view.published_by') . '</dt><dd>' . $authors . '</dd>' .
+                '<dt>' . $this->translator->trans('entry.metadata.reading_time') . '</dt><dd>' . $this->translator->trans('entry.metadata.reading_time_minutes_short', ['%readingTime%' => $entry->getReadingTime()]) . '</dd>' .
+                '<dt>' . $this->translator->trans('entry.metadata.added_on') . '</dt><dd>' . $entry->getCreatedAt()->format('Y-m-d') . '</dd>' .
+                '<dt>' . $this->translator->trans('entry.metadata.address') . '</dt><dd><a href="' . $entry->getUrl() . '">' . $entry->getUrl() . '</a></dd>' .
+                '</dl>';
+            $pdf->writeHTMLCell(0, 0, '', '', $html, 0, 1, 0, true, '', true);
+
             $pdf->AddPage();
-            $html = '<h1>'.$entry->getTitle().'</h1>';
+            $html = '<h1>' . $entry->getTitle() . '</h1>';
             $html .= $entry->getContent();
 
             $pdf->writeHTMLCell(0, 0, '', '', $html, 0, 1, 0, true, '', true);
         }
+
+        /*
+         * Last page
+         */
+        $pdf->AddPage();
+        $html = $this->getExportInformation('tcpdf');
+
+        $pdf->writeHTMLCell(0, 0, '', '', $html, 0, 1, 0, true, '', true);
 
         // set image scale factor
         $pdf->setImageScale(PDF_IMAGE_SCALE_RATIO);
@@ -284,7 +345,7 @@ class EntriesExport
             [
                 'Content-Description' => 'File Transfer',
                 'Content-type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="'.$this->title.'.pdf"',
+                'Content-Disposition' => 'attachment; filename="' . $this->getSanitizedFilename() . '.pdf"',
                 'Content-Transfer-Encoding' => 'binary',
             ]
         );
@@ -299,7 +360,7 @@ class EntriesExport
     {
         $delimiter = ';';
         $enclosure = '"';
-        $handle = fopen('php://memory', 'rb+');
+        $handle = fopen('php://memory', 'b+r');
 
         fputcsv($handle, ['Title', 'URL', 'Content', 'Tags', 'MIME Type', 'Language', 'Creation date'], $delimiter, $enclosure);
 
@@ -330,7 +391,7 @@ class EntriesExport
             200,
             [
                 'Content-type' => 'application/csv',
-                'Content-Disposition' => 'attachment; filename="'.$this->title.'.csv"',
+                'Content-Disposition' => 'attachment; filename="' . $this->getSanitizedFilename() . '.csv"',
                 'Content-Transfer-Encoding' => 'UTF-8',
             ]
         );
@@ -348,7 +409,7 @@ class EntriesExport
             200,
             [
                 'Content-type' => 'application/json',
-                'Content-Disposition' => 'attachment; filename="'.$this->title.'.json"',
+                'Content-Disposition' => 'attachment; filename="' . $this->getSanitizedFilename() . '.json"',
                 'Content-Transfer-Encoding' => 'UTF-8',
             ]
         );
@@ -366,7 +427,7 @@ class EntriesExport
             200,
             [
                 'Content-type' => 'application/xml',
-                'Content-Disposition' => 'attachment; filename="'.$this->title.'.xml"',
+                'Content-Disposition' => 'attachment; filename="' . $this->getSanitizedFilename() . '.xml"',
                 'Content-Transfer-Encoding' => 'UTF-8',
             ]
         );
@@ -382,8 +443,9 @@ class EntriesExport
         $content = '';
         $bar = str_repeat('=', 100);
         foreach ($this->entries as $entry) {
-            $content .= "\n\n".$bar."\n\n".$entry->getTitle()."\n\n".$bar."\n\n";
-            $content .= trim(preg_replace('/\s+/S', ' ', strip_tags($entry->getContent())))."\n\n";
+            $content .= "\n\n" . $bar . "\n\n" . $entry->getTitle() . "\n\n" . $bar . "\n\n";
+            $html = new Html2Text($entry->getContent(), ['do_links' => 'none', 'width' => 100]);
+            $content .= $html->getText();
         }
 
         return Response::create(
@@ -391,7 +453,7 @@ class EntriesExport
             200,
             [
                 'Content-type' => 'text/plain',
-                'Content-Disposition' => 'attachment; filename="'.$this->title.'.txt"',
+                'Content-Disposition' => 'attachment; filename="' . $this->getSanitizedFilename() . '.txt"',
                 'Content-Transfer-Encoding' => 'UTF-8',
             ]
         );
@@ -402,7 +464,7 @@ class EntriesExport
      *
      * @param string $format
      *
-     * @return Serializer
+     * @return string
      */
     private function prepareSerializingContent($format)
     {
@@ -424,12 +486,25 @@ class EntriesExport
      */
     private function getExportInformation($type)
     {
-        $info = str_replace('%EXPORT_METHOD%', $type, $this->footerTemplate);
+        $info = $this->translator->trans('export.footer_template', [
+            '%method%' => $type,
+        ]);
 
         if ('tcpdf' === $type) {
-            return str_replace('%IMAGE%', '<img src="'.$this->logoPath.'" />', $info);
+            return str_replace('%IMAGE%', '<img src="' . $this->logoPath . '" />', $info);
         }
 
         return str_replace('%IMAGE%', '', $info);
+    }
+
+    /**
+     * Return a sanitized version of the title by applying translit iconv
+     * and removing non alphanumeric characters, - and space.
+     *
+     * @return string Sanitized filename
+     */
+    private function getSanitizedFilename()
+    {
+        return preg_replace('/[^A-Za-z0-9\- \']/', '', iconv('utf-8', 'us-ascii//TRANSLIT', $this->title));
     }
 }

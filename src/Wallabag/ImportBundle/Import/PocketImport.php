@@ -2,17 +2,24 @@
 
 namespace Wallabag\ImportBundle\Import;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\RequestException;
+use Http\Client\Common\HttpMethodsClient;
+use Http\Client\Common\Plugin\ErrorPlugin;
+use Http\Client\Common\PluginClient;
+use Http\Client\Exception\RequestException;
+use Http\Client\HttpClient;
+use Http\Discovery\MessageFactoryDiscovery;
+use Http\Message\MessageFactory;
+use Psr\Http\Message\ResponseInterface;
 use Wallabag\CoreBundle\Entity\Entry;
-use Wallabag\CoreBundle\Helper\ContentProxy;
 
 class PocketImport extends AbstractImport
 {
+    const NB_ELEMENTS = 5000;
+    /**
+     * @var HttpMethodsClient
+     */
     private $client;
     private $accessToken;
-
-    const NB_ELEMENTS = 5000;
 
     /**
      * Only used for test purpose.
@@ -57,24 +64,18 @@ class PocketImport extends AbstractImport
      */
     public function getRequestToken($redirectUri)
     {
-        $request = $this->client->createRequest('POST', 'https://getpocket.com/v3/oauth/request',
-            [
-                'body' => json_encode([
-                    'consumer_key' => $this->user->getConfig()->getPocketConsumerKey(),
-                    'redirect_uri' => $redirectUri,
-                ]),
-            ]
-        );
-
         try {
-            $response = $this->client->send($request);
+            $response = $this->client->post('https://getpocket.com/v3/oauth/request', [], json_encode([
+                'consumer_key' => $this->user->getConfig()->getPocketConsumerKey(),
+                'redirect_uri' => $redirectUri,
+            ]));
         } catch (RequestException $e) {
             $this->logger->error(sprintf('PocketImport: Failed to request token: %s', $e->getMessage()), ['exception' => $e]);
 
             return false;
         }
 
-        return $response->json()['code'];
+        return $this->jsonDecode($response)['code'];
     }
 
     /**
@@ -87,24 +88,18 @@ class PocketImport extends AbstractImport
      */
     public function authorize($code)
     {
-        $request = $this->client->createRequest('POST', 'https://getpocket.com/v3/oauth/authorize',
-            [
-                'body' => json_encode([
-                    'consumer_key' => $this->user->getConfig()->getPocketConsumerKey(),
-                    'code' => $code,
-                ]),
-            ]
-        );
-
         try {
-            $response = $this->client->send($request);
+            $response = $this->client->post('https://getpocket.com/v3/oauth/authorize', [], json_encode([
+                'consumer_key' => $this->user->getConfig()->getPocketConsumerKey(),
+                'code' => $code,
+            ]));
         } catch (RequestException $e) {
             $this->logger->error(sprintf('PocketImport: Failed to authorize client: %s', $e->getMessage()), ['exception' => $e]);
 
             return false;
         }
 
-        $this->accessToken = $response->json()['access_token'];
+        $this->accessToken = $this->jsonDecode($response)['access_token'];
 
         return true;
     }
@@ -116,29 +111,23 @@ class PocketImport extends AbstractImport
     {
         static $run = 0;
 
-        $request = $this->client->createRequest('POST', 'https://getpocket.com/v3/get',
-            [
-                'body' => json_encode([
-                    'consumer_key' => $this->user->getConfig()->getPocketConsumerKey(),
-                    'access_token' => $this->accessToken,
-                    'detailType' => 'complete',
-                    'state' => 'all',
-                    'sort' => 'newest',
-                    'count' => self::NB_ELEMENTS,
-                    'offset' => $offset,
-                ]),
-            ]
-        );
-
         try {
-            $response = $this->client->send($request);
+            $response = $this->client->post('https://getpocket.com/v3/get', [], json_encode([
+                'consumer_key' => $this->user->getConfig()->getPocketConsumerKey(),
+                'access_token' => $this->accessToken,
+                'detailType' => 'complete',
+                'state' => 'all',
+                'sort' => 'newest',
+                'count' => self::NB_ELEMENTS,
+                'offset' => $offset,
+            ]));
         } catch (RequestException $e) {
             $this->logger->error(sprintf('PocketImport: Failed to import: %s', $e->getMessage()), ['exception' => $e]);
 
             return false;
         }
 
-        $entries = $response->json();
+        $entries = $this->jsonDecode($response);
 
         if ($this->producer) {
             $this->parseEntriesForProducer($entries['list']);
@@ -151,7 +140,7 @@ class PocketImport extends AbstractImport
         //  - first call get 5k offset 0
         //  - second call get 5k offset 5k
         //  - and so on
-        if (count($entries['list']) === self::NB_ELEMENTS) {
+        if (self::NB_ELEMENTS === \count($entries['list'])) {
             ++$run;
 
             return $this->import(self::NB_ELEMENTS * $run);
@@ -161,13 +150,26 @@ class PocketImport extends AbstractImport
     }
 
     /**
-     * Set the Guzzle client.
+     * Set the Http client.
      *
-     * @param Client $client
+     * @param HttpClient          $client
+     * @param MessageFactory|null $messageFactory
      */
-    public function setClient(Client $client)
+    public function setClient(HttpClient $client, MessageFactory $messageFactory = null)
     {
-        $this->client = $client;
+        $this->client = new HttpMethodsClient(new PluginClient($client, [new ErrorPlugin()]), $messageFactory ?: MessageFactoryDiscovery::find());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function validateEntry(array $importedEntry)
+    {
+        if (empty($importedEntry['resolved_url']) && empty($importedEntry['given_url'])) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -177,7 +179,7 @@ class PocketImport extends AbstractImport
      */
     public function parseEntry(array $importedEntry)
     {
-        $url = isset($importedEntry['resolved_url']) && $importedEntry['resolved_url'] != '' ? $importedEntry['resolved_url'] : $importedEntry['given_url'];
+        $url = isset($importedEntry['resolved_url']) && '' !== $importedEntry['resolved_url'] ? $importedEntry['resolved_url'] : $importedEntry['given_url'];
 
         $existingEntry = $this->em
             ->getRepository('WallabagCoreBundle:Entry')
@@ -193,18 +195,18 @@ class PocketImport extends AbstractImport
         $entry->setUrl($url);
 
         // update entry with content (in case fetching failed, the given entry will be return)
-        $entry = $this->fetchContent($entry, $url);
+        $this->fetchContent($entry, $url);
 
         // 0, 1, 2 - 1 if the item is archived - 2 if the item should be deleted
-        $entry->setArchived($importedEntry['status'] == 1 || $this->markAsRead);
+        $entry->updateArchived(1 === (int) $importedEntry['status'] || $this->markAsRead);
 
-        // 0 or 1 - 1 If the item is starred
-        $entry->setStarred($importedEntry['favorite'] == 1);
+        // 0 or 1 - 1 if the item is starred
+        $entry->setStarred(1 === (int) $importedEntry['favorite']);
 
         $title = 'Untitled';
-        if (isset($importedEntry['resolved_title']) && $importedEntry['resolved_title'] != '') {
+        if (isset($importedEntry['resolved_title']) && '' !== $importedEntry['resolved_title']) {
             $title = $importedEntry['resolved_title'];
-        } elseif (isset($importedEntry['given_title']) && $importedEntry['given_title'] != '') {
+        } elseif (isset($importedEntry['given_title']) && '' !== $importedEntry['given_title']) {
             $title = $importedEntry['given_title'];
         }
 
@@ -216,7 +218,7 @@ class PocketImport extends AbstractImport
         }
 
         if (isset($importedEntry['tags']) && !empty($importedEntry['tags'])) {
-            $this->contentProxy->assignTagsToEntry(
+            $this->tagsAssigner->assignTagsToEntry(
                 $entry,
                 array_keys($importedEntry['tags']),
                 $this->em->getUnitOfWork()->getScheduledEntityInsertions()
@@ -241,5 +243,16 @@ class PocketImport extends AbstractImport
         $importedEntry['status'] = '1';
 
         return $importedEntry;
+    }
+
+    protected function jsonDecode(ResponseInterface $response)
+    {
+        $data = json_decode((string) $response->getBody(), true);
+
+        if (JSON_ERROR_NONE !== json_last_error()) {
+            throw new \InvalidArgumentException('Unable to parse JSON data: ' . json_last_error_msg());
+        }
+
+        return $data;
     }
 }

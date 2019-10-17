@@ -2,19 +2,20 @@
 
 namespace Wallabag\CoreBundle\Controller;
 
+use Doctrine\ORM\NoResultException;
 use Pagerfanta\Adapter\DoctrineORMAdapter;
 use Pagerfanta\Exception\OutOfRangeCurrentPageException;
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Cache;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Wallabag\CoreBundle\Entity\Entry;
-use Wallabag\CoreBundle\Form\Type\EntryFilterType;
-use Wallabag\CoreBundle\Form\Type\EditEntryType;
-use Wallabag\CoreBundle\Form\Type\NewEntryType;
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Cache;
-use Wallabag\CoreBundle\Event\EntrySavedEvent;
 use Wallabag\CoreBundle\Event\EntryDeletedEvent;
+use Wallabag\CoreBundle\Event\EntrySavedEvent;
+use Wallabag\CoreBundle\Form\Type\EditEntryType;
+use Wallabag\CoreBundle\Form\Type\EntryFilterType;
+use Wallabag\CoreBundle\Form\Type\NewEntryType;
 use Wallabag\CoreBundle\Form\Type\SearchEntryType;
 
 class EntryController extends Controller
@@ -49,38 +50,6 @@ class EntryController extends Controller
             'form' => $form->createView(),
             'currentRoute' => $currentRoute,
         ]);
-    }
-
-    /**
-     * Fetch content and update entry.
-     * In case it fails, entry will return to avod loosing the data.
-     *
-     * @param Entry  $entry
-     * @param string $prefixMessage Should be the translation key: entry_saved or entry_reloaded
-     *
-     * @return Entry
-     */
-    private function updateEntry(Entry $entry, $prefixMessage = 'entry_saved')
-    {
-        // put default title in case of fetching content failed
-        $entry->setTitle('No title found');
-
-        $message = 'flashes.entry.notice.'.$prefixMessage;
-
-        try {
-            $entry = $this->get('wallabag_core.content_proxy')->updateEntry($entry, $entry->getUrl());
-        } catch (\Exception $e) {
-            $this->get('logger')->error('Error while saving an entry', [
-                'exception' => $e,
-                'entry' => $entry,
-            ]);
-
-            $message = 'flashes.entry.notice.'.$prefixMessage.'_failed';
-        }
-
-        $this->get('session')->getFlashBag()->add('notice', $message);
-
-        return $entry;
     }
 
     /**
@@ -227,7 +196,7 @@ class EntryController extends Controller
     public function showUnreadAction(Request $request, $page)
     {
         // load the quickstart if no entry in database
-        if ($page == 1 && $this->get('wallabag_core.entry_repository')->countAllEntriesByUsername($this->getUser()->getId()) == 0) {
+        if (1 === (int) $page && 0 === $this->get('wallabag_core.entry_repository')->countAllEntriesByUser($this->getUser()->getId())) {
             return $this->redirect($this->generateUrl('quickstart'));
         }
 
@@ -265,81 +234,43 @@ class EntryController extends Controller
     }
 
     /**
-     * Global method to retrieve entries depending on the given type
-     * It returns the response to be send.
+     * Shows untagged articles for current user.
      *
-     * @param string  $type    Entries type: unread, starred or archive
      * @param Request $request
      * @param int     $page
      *
+     * @Route("/untagged/list/{page}", name="untagged", defaults={"page" = "1"})
+     *
      * @return \Symfony\Component\HttpFoundation\Response
      */
-    private function showEntries($type, Request $request, $page)
+    public function showUntaggedEntriesAction(Request $request, $page)
     {
-        $repository = $this->get('wallabag_core.entry_repository');
-        $searchTerm = (isset($request->get('search_entry')['term']) ? $request->get('search_entry')['term'] : '');
-        $currentRoute = (!is_null($request->query->get('currentRoute')) ? $request->query->get('currentRoute') : '');
+        return $this->showEntries('untagged', $request, $page);
+    }
 
-        switch ($type) {
-            case 'search':
-                $qb = $repository->getBuilderForSearchByUser($this->getUser()->getId(), $searchTerm, $currentRoute);
-
-                break;
-            case 'untagged':
-                $qb = $repository->getBuilderForUntaggedByUser($this->getUser()->getId());
-
-                break;
-            case 'starred':
-                $qb = $repository->getBuilderForStarredByUser($this->getUser()->getId());
-                break;
-
-            case 'archive':
-                $qb = $repository->getBuilderForArchiveByUser($this->getUser()->getId());
-                break;
-
-            case 'unread':
-                $qb = $repository->getBuilderForUnreadByUser($this->getUser()->getId());
-                break;
-
-            case 'all':
-                $qb = $repository->getBuilderForAllByUser($this->getUser()->getId());
-                break;
-
-            default:
-                throw new \InvalidArgumentException(sprintf('Type "%s" is not implemented.', $type));
-        }
-
-        $form = $this->createForm(EntryFilterType::class);
-
-        if ($request->query->has($form->getName())) {
-            // manually bind values from the request
-            $form->submit($request->query->get($form->getName()));
-
-            // build the query from the given form object
-            $this->get('lexik_form_filter.query_builder_updater')->addFilterConditions($form, $qb);
-        }
-
-        $pagerAdapter = new DoctrineORMAdapter($qb->getQuery(), true, false);
-
-        $entries = $this->get('wallabag_core.helper.prepare_pager_for_entries')
-            ->prepare($pagerAdapter, $page);
-
+    /**
+     * Shows random entry depending on the given type.
+     *
+     * @param string $type
+     *
+     * @Route("/{type}/random", name="random_entry", requirements={"type": "unread|starred|archive|untagged|all"})
+     *
+     * @return \Symfony\Component\HttpFoundation\RedirectResponse
+     */
+    public function redirectRandomEntryAction($type = 'all')
+    {
         try {
-            $entries->setCurrentPage($page);
-        } catch (OutOfRangeCurrentPageException $e) {
-            if ($page > 1) {
-                return $this->redirect($this->generateUrl($type, ['page' => $entries->getNbPages()]), 302);
-            }
+            $entry = $this->get('wallabag_core.entry_repository')
+                ->getRandomEntry($this->getUser()->getId(), $type);
+        } catch (NoResultException $e) {
+            $bag = $this->get('session')->getFlashBag();
+            $bag->clear();
+            $bag->add('notice', 'flashes.entry.notice.no_random_entry');
+
+            return $this->redirect($this->generateUrl($type));
         }
 
-        return $this->render(
-            'WallabagCoreBundle:Entry:entries.html.twig', [
-                'form' => $form->createView(),
-                'entries' => $entries,
-                'currentPage' => $page,
-                'searchTerm' => $searchTerm,
-            ]
-        );
+        return $this->redirect($this->generateUrl('view', ['id' => $entry->getId()]));
     }
 
     /**
@@ -443,6 +374,7 @@ class EntryController extends Controller
         $this->checkUserAction($entry);
 
         $entry->toggleStar();
+        $entry->updateStar($entry->isStarred());
         $this->getDoctrine()->getManager()->flush();
 
         $message = 'flashes.entry.notice.entry_unstarred';
@@ -495,35 +427,11 @@ class EntryController extends Controller
 
         // don't redirect user to the deleted entry (check that the referer doesn't end with the same url)
         $referer = $request->headers->get('referer');
-        $to = (1 !== preg_match('#'.$url.'$#i', $referer) ? $referer : null);
+        $to = (1 !== preg_match('#' . $url . '$#i', $referer) ? $referer : null);
 
         $redirectUrl = $this->get('wallabag_core.helper.redirect')->to($to);
 
         return $this->redirect($redirectUrl);
-    }
-
-    /**
-     * Check if the logged user can manage the given entry.
-     *
-     * @param Entry $entry
-     */
-    private function checkUserAction(Entry $entry)
-    {
-        if (null === $this->getUser() || $this->getUser()->getId() != $entry->getUser()->getId()) {
-            throw $this->createAccessDeniedException('You can not access this entry.');
-        }
-    }
-
-    /**
-     * Check for existing entry, if it exists, redirect to it with a message.
-     *
-     * @param Entry $entry
-     *
-     * @return Entry|bool
-     */
-    private function checkIfEntryAlreadyExists(Entry $entry)
-    {
-        return $this->get('wallabag_core.entry_repository')->findByUrlAndUserId($entry->getUrl(), $this->getUser()->getId());
     }
 
     /**
@@ -599,17 +507,131 @@ class EntryController extends Controller
     }
 
     /**
-     * Shows untagged articles for current user.
+     * Global method to retrieve entries depending on the given type
+     * It returns the response to be send.
      *
+     * @param string  $type    Entries type: unread, starred or archive
      * @param Request $request
      * @param int     $page
      *
-     * @Route("/untagged/list/{page}", name="untagged", defaults={"page" = "1"})
-     *
      * @return \Symfony\Component\HttpFoundation\Response
      */
-    public function showUntaggedEntriesAction(Request $request, $page)
+    private function showEntries($type, Request $request, $page)
     {
-        return $this->showEntries('untagged', $request, $page);
+        $repository = $this->get('wallabag_core.entry_repository');
+        $searchTerm = (isset($request->get('search_entry')['term']) ? $request->get('search_entry')['term'] : '');
+        $currentRoute = (null !== $request->query->get('currentRoute') ? $request->query->get('currentRoute') : '');
+
+        switch ($type) {
+            case 'search':
+                $qb = $repository->getBuilderForSearchByUser($this->getUser()->getId(), $searchTerm, $currentRoute);
+                break;
+            case 'untagged':
+                $qb = $repository->getBuilderForUntaggedByUser($this->getUser()->getId());
+                break;
+            case 'starred':
+                $qb = $repository->getBuilderForStarredByUser($this->getUser()->getId());
+                break;
+            case 'archive':
+                $qb = $repository->getBuilderForArchiveByUser($this->getUser()->getId());
+                break;
+            case 'unread':
+                $qb = $repository->getBuilderForUnreadByUser($this->getUser()->getId());
+                break;
+            case 'all':
+                $qb = $repository->getBuilderForAllByUser($this->getUser()->getId());
+                break;
+            default:
+                throw new \InvalidArgumentException(sprintf('Type "%s" is not implemented.', $type));
+        }
+
+        $form = $this->createForm(EntryFilterType::class);
+
+        if ($request->query->has($form->getName())) {
+            // manually bind values from the request
+            $form->submit($request->query->get($form->getName()));
+
+            // build the query from the given form object
+            $this->get('lexik_form_filter.query_builder_updater')->addFilterConditions($form, $qb);
+        }
+
+        $pagerAdapter = new DoctrineORMAdapter($qb->getQuery(), true, false);
+
+        $entries = $this->get('wallabag_core.helper.prepare_pager_for_entries')->prepare($pagerAdapter);
+
+        try {
+            $entries->setCurrentPage($page);
+        } catch (OutOfRangeCurrentPageException $e) {
+            if ($page > 1) {
+                return $this->redirect($this->generateUrl($type, ['page' => $entries->getNbPages()]), 302);
+            }
+        }
+
+        return $this->render(
+            'WallabagCoreBundle:Entry:entries.html.twig', [
+                'form' => $form->createView(),
+                'entries' => $entries,
+                'currentPage' => $page,
+                'searchTerm' => $searchTerm,
+                'isFiltered' => $form->isSubmitted(),
+            ]
+        );
+    }
+
+    /**
+     * Fetch content and update entry.
+     * In case it fails, $entry->getContent will return an error message.
+     *
+     * @param Entry  $entry
+     * @param string $prefixMessage Should be the translation key: entry_saved or entry_reloaded
+     */
+    private function updateEntry(Entry $entry, $prefixMessage = 'entry_saved')
+    {
+        $message = 'flashes.entry.notice.' . $prefixMessage;
+
+        try {
+            $this->get('wallabag_core.content_proxy')->updateEntry($entry, $entry->getUrl());
+        } catch (\Exception $e) {
+            $this->get('logger')->error('Error while saving an entry', [
+                'exception' => $e,
+                'entry' => $entry,
+            ]);
+
+            $message = 'flashes.entry.notice.' . $prefixMessage . '_failed';
+        }
+
+        if (empty($entry->getDomainName())) {
+            $this->get('wallabag_core.content_proxy')->setEntryDomainName($entry);
+        }
+
+        if (empty($entry->getTitle())) {
+            $this->get('wallabag_core.content_proxy')->setDefaultEntryTitle($entry);
+        }
+
+        $this->get('session')->getFlashBag()->add('notice', $message);
+    }
+
+    /**
+     * Check if the logged user can manage the given entry.
+     *
+     * @param Entry $entry
+     */
+    private function checkUserAction(Entry $entry)
+    {
+        if (null === $this->getUser() || $this->getUser()->getId() !== $entry->getUser()->getId()) {
+            throw $this->createAccessDeniedException('You can not access this entry.');
+        }
+    }
+
+    /**
+     * Check for existing entry, if it exists, redirect to it with a message.
+     *
+     * @param Entry $entry
+     *
+     * @return Entry|bool
+     */
+    private function checkIfEntryAlreadyExists(Entry $entry)
+    {
+        return $this->get('wallabag_core.entry_repository')->findByUrlAndUserId($entry->getUrl(), $this->getUser()->getId());
     }
 }

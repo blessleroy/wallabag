@@ -2,8 +2,8 @@
 
 namespace Tests\Wallabag\ImportBundle\Controller;
 
-use Tests\Wallabag\CoreBundle\WallabagCoreTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Tests\Wallabag\CoreBundle\WallabagCoreTestCase;
 
 class InstapaperControllerTest extends WallabagCoreTestCase
 {
@@ -14,9 +14,9 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $crawler = $client->request('GET', '/import/instapaper');
 
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
-        $this->assertEquals(1, $crawler->filter('form[name=upload_import_file] > button[type=submit]')->count());
-        $this->assertEquals(1, $crawler->filter('input[type=file]')->count());
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $this->assertSame(1, $crawler->filter('form[name=upload_import_file] > button[type=submit]')->count());
+        $this->assertSame(1, $crawler->filter('input[type=file]')->count());
     }
 
     public function testImportInstapaperWithRabbitEnabled()
@@ -28,9 +28,9 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $crawler = $client->request('GET', '/import/instapaper');
 
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
-        $this->assertEquals(1, $crawler->filter('form[name=upload_import_file] > button[type=submit]')->count());
-        $this->assertEquals(1, $crawler->filter('input[type=file]')->count());
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $this->assertSame(1, $crawler->filter('form[name=upload_import_file] > button[type=submit]')->count());
+        $this->assertSame(1, $crawler->filter('input[type=file]')->count());
 
         $client->getContainer()->get('craue_config')->set('import_with_rabbitmq', 0);
     }
@@ -49,7 +49,7 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $client->submit($form, $data);
 
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
     }
 
     public function testImportInstapaperWithRedisEnabled()
@@ -61,13 +61,13 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $crawler = $client->request('GET', '/import/instapaper');
 
-        $this->assertEquals(200, $client->getResponse()->getStatusCode());
-        $this->assertEquals(1, $crawler->filter('form[name=upload_import_file] > button[type=submit]')->count());
-        $this->assertEquals(1, $crawler->filter('input[type=file]')->count());
+        $this->assertSame(200, $client->getResponse()->getStatusCode());
+        $this->assertSame(1, $crawler->filter('form[name=upload_import_file] > button[type=submit]')->count());
+        $this->assertSame(1, $crawler->filter('input[type=file]')->count());
 
         $form = $crawler->filter('form[name=upload_import_file] > button[type=submit]')->form();
 
-        $file = new UploadedFile(__DIR__.'/../fixtures/instapaper-export.csv', 'instapaper.csv');
+        $file = new UploadedFile(__DIR__ . '/../fixtures/instapaper-export.csv', 'instapaper.csv');
 
         $data = [
             'upload_import_file[file]' => $file,
@@ -75,7 +75,7 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $client->submit($form, $data);
 
-        $this->assertEquals(302, $client->getResponse()->getStatusCode());
+        $this->assertSame(302, $client->getResponse()->getStatusCode());
 
         $crawler = $client->followRedirect();
 
@@ -95,7 +95,7 @@ class InstapaperControllerTest extends WallabagCoreTestCase
         $crawler = $client->request('GET', '/import/instapaper');
         $form = $crawler->filter('form[name=upload_import_file] > button[type=submit]')->form();
 
-        $file = new UploadedFile(__DIR__.'/../fixtures/instapaper-export.csv', 'instapaper.csv');
+        $file = new UploadedFile(__DIR__ . '/../fixtures/instapaper-export.csv', 'instapaper.csv');
 
         $data = [
             'upload_import_file[file]' => $file,
@@ -103,26 +103,42 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $client->submit($form, $data);
 
-        $this->assertEquals(302, $client->getResponse()->getStatusCode());
+        $this->assertSame(302, $client->getResponse()->getStatusCode());
 
         $crawler = $client->followRedirect();
+
+        $this->assertGreaterThan(1, $body = $crawler->filter('body')->extract(['_text']));
+        $this->assertContains('flashes.import.notice.summary', $body[0]);
 
         $content = $client->getContainer()
             ->get('doctrine.orm.entity_manager')
             ->getRepository('WallabagCoreBundle:Entry')
             ->findByUrlAndUserId(
-                'http://www.liberation.fr/societe/2012/12/06/baumettes-un-tour-en-cellule_865551',
+                'https://www.liberation.fr/societe/2012/12/06/baumettes-un-tour-en-cellule_865551',
                 $this->getLoggedInUserId()
             );
 
-        $this->assertGreaterThan(1, $body = $crawler->filter('body')->extract(['_text']));
-        $this->assertContains('flashes.import.notice.summary', $body[0]);
+        $this->assertInstanceOf('Wallabag\CoreBundle\Entity\Entry', $content);
 
-        $this->assertNotEmpty($content->getMimetype(), 'Mimetype for http://www.liberation.fr is ok');
-        $this->assertNotEmpty($content->getPreviewPicture(), 'Preview picture for http://www.liberation.fr is ok');
-        $this->assertNotEmpty($content->getLanguage(), 'Language for http://www.liberation.fr is ok');
-        $this->assertEquals(0, count($content->getTags()));
+        $this->assertNotEmpty($content->getMimetype(), 'Mimetype for https://www.liberation.fr is ok');
+        $this->assertNotEmpty($content->getPreviewPicture(), 'Preview picture for https://www.liberation.fr is ok');
+        $this->assertNotEmpty($content->getLanguage(), 'Language for https://www.liberation.fr is ok');
+        $this->assertContains('foot', $content->getTags(), 'It includes the "foot" tag');
+        $this->assertCount(1, $content->getTags());
         $this->assertInstanceOf(\DateTime::class, $content->getCreatedAt());
+
+        $content = $client->getContainer()
+            ->get('doctrine.orm.entity_manager')
+            ->getRepository('WallabagCoreBundle:Entry')
+            ->findByUrlAndUserId(
+                'https://www.20minutes.fr/high-tech/2077615-20170531-quoi-exactement-tweet-covfefe-donald-trump-persiste-signe',
+                $this->getLoggedInUserId()
+            );
+
+        $this->assertContains('foot', $content->getTags());
+        $this->assertContains('test_tag', $content->getTags());
+
+        $this->assertCount(2, $content->getTags());
     }
 
     public function testImportInstapaperWithFileAndMarkAllAsRead()
@@ -133,7 +149,7 @@ class InstapaperControllerTest extends WallabagCoreTestCase
         $crawler = $client->request('GET', '/import/instapaper');
         $form = $crawler->filter('form[name=upload_import_file] > button[type=submit]')->form();
 
-        $file = new UploadedFile(__DIR__.'/../fixtures/instapaper-export.csv', 'instapaper-read.csv');
+        $file = new UploadedFile(__DIR__ . '/../fixtures/instapaper-export.csv', 'instapaper-read.csv');
 
         $data = [
             'upload_import_file[file]' => $file,
@@ -142,7 +158,7 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $client->submit($form, $data);
 
-        $this->assertEquals(302, $client->getResponse()->getStatusCode());
+        $this->assertSame(302, $client->getResponse()->getStatusCode());
 
         $crawler = $client->followRedirect();
 
@@ -178,7 +194,7 @@ class InstapaperControllerTest extends WallabagCoreTestCase
         $crawler = $client->request('GET', '/import/instapaper');
         $form = $crawler->filter('form[name=upload_import_file] > button[type=submit]')->form();
 
-        $file = new UploadedFile(__DIR__.'/../fixtures/test.txt', 'test.txt');
+        $file = new UploadedFile(__DIR__ . '/../fixtures/test.txt', 'test.txt');
 
         $data = [
             'upload_import_file[file]' => $file,
@@ -186,7 +202,7 @@ class InstapaperControllerTest extends WallabagCoreTestCase
 
         $client->submit($form, $data);
 
-        $this->assertEquals(302, $client->getResponse()->getStatusCode());
+        $this->assertSame(302, $client->getResponse()->getStatusCode());
 
         $crawler = $client->followRedirect();
 

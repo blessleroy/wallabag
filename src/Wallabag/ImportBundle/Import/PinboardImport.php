@@ -83,6 +83,18 @@ class PinboardImport extends AbstractImport
     /**
      * {@inheritdoc}
      */
+    public function validateEntry(array $importedEntry)
+    {
+        if (empty($importedEntry['href'])) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function parseEntry(array $importedEntry)
     {
         $existingEntry = $this->em
@@ -109,17 +121,17 @@ class PinboardImport extends AbstractImport
         $entry->setTitle($data['title']);
 
         // update entry with content (in case fetching failed, the given entry will be return)
-        $entry = $this->fetchContent($entry, $data['url'], $data);
+        $this->fetchContent($entry, $data['url'], $data);
 
         if (!empty($data['tags'])) {
-            $this->contentProxy->assignTagsToEntry(
+            $this->tagsAssigner->assignTagsToEntry(
                 $entry,
                 $data['tags'],
                 $this->em->getUnitOfWork()->getScheduledEntityInsertions()
             );
         }
 
-        $entry->setArchived($data['is_archived']);
+        $entry->updateArchived($data['is_archived']);
         $entry->setStarred($data['is_starred']);
         $entry->setCreatedAt(new \DateTime($data['created_at']));
 

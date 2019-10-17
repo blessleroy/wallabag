@@ -2,12 +2,11 @@
 
 namespace Wallabag\CoreBundle\Controller;
 
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Routing\Annotation\Route;
 use Wallabag\CoreBundle\Entity\Entry;
-use Wallabag\CoreBundle\Entity\Tag;
 
 /**
  * The try/catch can be removed once all formats will be implemented.
@@ -34,6 +33,7 @@ class ExportController extends Controller
             return $this->get('wallabag_core.helper.entries_export')
                 ->setEntries($entry)
                 ->updateTitle('entry')
+                ->updateAuthor('entry')
                 ->exportAs($format);
         } catch (\InvalidArgumentException $e) {
             throw new NotFoundHttpException($e->getMessage());
@@ -56,17 +56,21 @@ class ExportController extends Controller
     public function downloadEntriesAction(Request $request, $format, $category)
     {
         $method = ucfirst($category);
-        $methodBuilder = 'getBuilderFor'.$method.'ByUser';
+        $methodBuilder = 'getBuilderFor' . $method . 'ByUser';
+        $repository = $this->get('wallabag_core.entry_repository');
+        $title = $method;
 
-        if ($category == 'tag_entries') {
-            $tag = $this->getDoctrine()->getRepository('WallabagCoreBundle:Tag')->findOneBySlug($request->query->get('tag'));
+        if ('tag_entries' === $category) {
+            $tag = $this->get('wallabag_core.tag_repository')->findOneBySlug($request->query->get('tag'));
 
-            $entries = $this->getDoctrine()
-                ->getRepository('WallabagCoreBundle:Entry')
-                ->findAllByTagId($this->getUser()->getId(), $tag->getId());
+            $entries = $repository->findAllByTagId(
+                $this->getUser()->getId(),
+                $tag->getId()
+            );
+
+            $title = 'Tag ' . $tag->getLabel();
         } else {
-            $entries = $this->getDoctrine()
-                ->getRepository('WallabagCoreBundle:Entry')
+            $entries = $repository
                 ->$methodBuilder($this->getUser()->getId())
                 ->getQuery()
                 ->getResult();
@@ -75,7 +79,8 @@ class ExportController extends Controller
         try {
             return $this->get('wallabag_core.helper.entries_export')
                 ->setEntries($entries)
-                ->updateTitle($method)
+                ->updateTitle($title)
+                ->updateAuthor($method)
                 ->exportAs($format);
         } catch (\InvalidArgumentException $e) {
             throw new NotFoundHttpException($e->getMessage());
